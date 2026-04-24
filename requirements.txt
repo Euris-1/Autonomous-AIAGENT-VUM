@@ -4,3 +4,5 @@ Jinja2
 SQLAlchemy
 alembic
 python-multipart
+httpx
+pydantic

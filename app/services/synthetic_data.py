@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from typing import List
 
@@ -13,12 +14,21 @@ from app.models import (
     SnapshotType,
     Vulnerability,
 )
+from app.services.real_cve_catalog import pick_cve_for_severity
+
+logger = logging.getLogger(__name__)
 
 
-def _generate_synthetic_cve() -> str:
-    year = random.randint(2090, 2099)
-    ident = random.randint(1000, 99999)
-    return f"CVE-{year}-{ident:05d}"
+def _generate_synthetic_cve(severity: Severity | None = None) -> str:
+    """Return a real, public CVE identifier matched to the given severity.
+
+    We use real CVEs from the curated public catalog so that the AI
+    enrichment pipeline can demonstrate real NVD/EPSS/CISA KEV data.
+    The hosts, plugin IDs, AMIs, and all other data remain synthetic.
+    """
+    if severity is None:
+        severity = Severity.HIGH
+    return pick_cve_for_severity(severity)
 
 
 def _generate_synthetic_plugin_id() -> str:
@@ -57,12 +67,28 @@ def _build_vulnerability(
     return Vulnerability(
         scan_snapshot_id=snapshot.id,
         synthetic_id=synthetic_id,
-        cve=_generate_synthetic_cve(),
+        cve=_generate_synthetic_cve(severity),
         plugin_id=_generate_synthetic_plugin_id(),
         severity=severity,
         host=_generate_synthetic_host(environment),
         description="Synthetic vulnerability used for demonstration only.",
     )
+
+
+def _enrich_snapshot_cves(db: Session, snapshot: ScanSnapshot) -> None:
+    """Trigger CVE enrichment for all vulnerabilities in the snapshot.
+
+    Runs synchronously after the snapshot is committed. Failures are logged
+    but never block snapshot generation.
+    """
+    try:
+        from app.services.cve_enrichment import enrich_cves_bulk
+
+        cve_ids = [v.cve for v in snapshot.vulnerabilities if v.cve]
+        if cve_ids:
+            enrich_cves_bulk(db, cve_ids)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("CVE enrichment failed (non-fatal): %s", exc)
 
 
 def _delete_existing_snapshots(
@@ -107,6 +133,7 @@ def generate_before_snapshot(
 
     db.commit()
     db.refresh(snapshot)
+    _enrich_snapshot_cves(db, snapshot)
     return snapshot
 
 
@@ -150,6 +177,7 @@ def generate_after_snapshot(
 
         db.commit()
         db.refresh(snapshot)
+        _enrich_snapshot_cves(db, snapshot)
         return snapshot
 
     before_vulns = list(before_snapshot.vulnerabilities)
@@ -182,4 +210,5 @@ def generate_after_snapshot(
 
     db.commit()
     db.refresh(snapshot)
+    _enrich_snapshot_cves(db, snapshot)
     return snapshot

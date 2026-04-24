@@ -2,9 +2,29 @@
 __pycache__/
 *.pyc
 .venv/
+venv/
+*.egg-info/
 
 # PlantUML / generated output
 out/
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Local SQLite databases (synthetic data only, should be regenerated)
+*.db
+*.sqlite
+*.sqlite3
+
+# Scratch / exploratory clones
+temp-clone/
+
+# Environment secrets
+.env
+.env.local
+*.key
+
+# IDE
+.vscode/
+.idea/

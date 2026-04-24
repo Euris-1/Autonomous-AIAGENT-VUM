@@ -1,0 +1,115 @@
+{# Reusable macros for rendering CVE threat intelligence badges.
+
+   Usage (in a template that receives `intel_map` and `risk_scores`):
+     {% from "_threat_intel_macros.html" import intel_badges, intel_summary_panel %}
+     {{ intel_badges(vuln.cve, intel_map, risk_scores) }}
+#}
+
+{% macro intel_badges(cve_id, intel_map, risk_scores) %}
+  {% set intel = intel_map.get(cve_id) if cve_id else None %}
+  {% if intel %}
+    <div class="flex flex-wrap gap-1 items-center text-xs">
+      {# CVSS badge #}
+      {% if intel.cvss_v3_score is not none %}
+        {% set score = intel.cvss_v3_score %}
+        {% if score >= 9.0 %}
+          {% set cvss_class = "bg-red-600 text-white" %}
+        {% elif score >= 7.0 %}
+          {% set cvss_class = "bg-orange-500 text-white" %}
+        {% elif score >= 4.0 %}
+          {% set cvss_class = "bg-yellow-500 text-black" %}
+        {% else %}
+          {% set cvss_class = "bg-blue-500 text-white" %}
+        {% endif %}
+        <span class="px-2 py-0.5 rounded font-bold {{ cvss_class }}"
+              title="CVSS v3 base score (source: NVD)">
+          CVSS {{ "%.1f"|format(score) }}
+        </span>
+      {% endif %}
+
+      {# EPSS badge #}
+      {% if intel.epss_score is not none %}
+        {% set epss_pct = (intel.epss_score * 100)|round(1) %}
+        {% if intel.epss_score >= 0.7 %}
+          {% set epss_class = "bg-red-500/80 text-white" %}
+        {% elif intel.epss_score >= 0.3 %}
+          {% set epss_class = "bg-orange-400/80 text-white" %}
+        {% else %}
+          {% set epss_class = "bg-slate-600 text-white" %}
+        {% endif %}
+        <span class="px-2 py-0.5 rounded {{ epss_class }}"
+              title="EPSS: probability of exploitation in next 30 days (source: FIRST.org)">
+          EPSS {{ epss_pct }}%
+        </span>
+      {% endif %}
+
+      {# CISA KEV badge #}
+      {% if intel.is_kev %}
+        <span class="px-2 py-0.5 rounded bg-rose-700 text-white font-bold animate-pulse"
+              title="On CISA Known Exploited Vulnerabilities list - actively exploited in the wild">
+          KEV
+        </span>
+      {% endif %}
+    </div>
+  {% else %}
+    <span class="text-xs text-slate-500 italic" title="Threat intel not yet loaded">—</span>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro risk_score_cell(cve_id, risk_scores) %}
+  {% set score = risk_scores.get(cve_id, 0) if cve_id else 0 %}
+  {% if score >= 80 %}
+    {% set cls = "bg-red-600 text-white" %}
+  {% elif score >= 60 %}
+    {% set cls = "bg-orange-500 text-white" %}
+  {% elif score >= 40 %}
+    {% set cls = "bg-yellow-500 text-black" %}
+  {% elif score > 0 %}
+    {% set cls = "bg-blue-500 text-white" %}
+  {% else %}
+    {% set cls = "bg-slate-600 text-slate-300" %}
+  {% endif %}
+  <span class="px-2 py-0.5 rounded font-bold {{ cls }}"
+        title="Composite risk score (CVSS + EPSS + KEV boost)">
+    {{ score if score else "–" }}
+  </span>
+{% endmacro %}
+
+
+{% macro intel_summary_panel(kev_count, high_epss_count, intel_map) %}
+  <div class="p-4 rounded-xl bg-gradient-to-br from-slate-800/80 to-slate-900/80
+              border border-purple-500/30 backdrop-blur shadow-lg">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-bold text-purple-300 tracking-wider uppercase">
+        🛡️ Threat Intelligence
+      </h3>
+      <span class="text-xs text-slate-400">
+        NVD · EPSS · CISA KEV
+      </span>
+    </div>
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div class="p-3 rounded-lg bg-rose-900/30 border border-rose-500/40">
+        <div class="text-2xl font-bold text-rose-300">{{ kev_count or 0 }}</div>
+        <div class="text-[10px] text-rose-200 uppercase tracking-wider">
+          Actively Exploited
+        </div>
+      </div>
+      <div class="p-3 rounded-lg bg-orange-900/30 border border-orange-500/40">
+        <div class="text-2xl font-bold text-orange-300">{{ high_epss_count or 0 }}</div>
+        <div class="text-[10px] text-orange-200 uppercase tracking-wider">
+          High Exploit Probability
+        </div>
+      </div>
+      <div class="p-3 rounded-lg bg-blue-900/30 border border-blue-500/40">
+        <div class="text-2xl font-bold text-blue-300">{{ intel_map|length }}</div>
+        <div class="text-[10px] text-blue-200 uppercase tracking-wider">
+          CVEs Enriched
+        </div>
+      </div>
+    </div>
+    <div class="mt-3 text-[10px] text-slate-500 text-center italic">
+      Real-world intel from public sources · cached locally · synthetic data only
+    </div>
+  </div>
+{% endmacro %}

@@ -10,6 +10,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Environment, PatchEvent, Service, SnapshotType
 from app.services.cr_text import build_prod_cr_text, build_stage_cr_text
+from app.services.cve_enrichment import (
+    compute_risk_score,
+    enrich_cves_bulk,
+    get_intel_map,
+)
 from app.services.diff import (
     compute_fixed_vulnerabilities,
     compute_remaining_vulnerabilities,
@@ -25,6 +30,42 @@ from app.state import get_state_for_event, transition_patch_event
 router = APIRouter()
 
 templates = Jinja2Templates(directory="templates")
+
+
+def _build_intel_context(db: Session, *vuln_lists) -> Dict[str, object]:
+    """Collect enrichment data for one or more vulnerability lists.
+
+    Returns a dict with:
+    - intel_map: {cve_id: CVEIntelligence}
+    - risk_scores: {cve_id: float (0-100)}
+    - kev_count: number of vulns that are on the CISA KEV list
+    - high_epss_count: number of vulns with EPSS >= 0.5
+    """
+    all_cves: List[str] = []
+    for vulns in vuln_lists:
+        for v in vulns or []:
+            if getattr(v, "cve", None):
+                all_cves.append(v.cve)
+
+    intel_map = get_intel_map(db, all_cves)
+    risk_scores = {
+        cve_id: compute_risk_score(intel)
+        for cve_id, intel in intel_map.items()
+    }
+
+    kev_count = sum(1 for intel in intel_map.values() if intel.is_kev)
+    high_epss_count = sum(
+        1
+        for intel in intel_map.values()
+        if intel.epss_score is not None and intel.epss_score >= 0.5
+    )
+
+    return {
+        "intel_map": intel_map,
+        "risk_scores": risk_scores,
+        "kev_count": kev_count,
+        "high_epss_count": high_epss_count,
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -239,6 +280,10 @@ def get_patch_event_detail(
     }
     prod_cr_allowed = patch_event.current_state_code in prod_cr_allowed_states
 
+    intel_ctx = _build_intel_context(
+        db, before_vulns, after_vulns, fixed_vulnerabilities
+    )
+
     return templates.TemplateResponse(
         "patch_event_detail.html",
         {
@@ -263,6 +308,11 @@ def get_patch_event_detail(
             "stage_cr_summary": patch_event.stage_cr_summary,
             "prod_cr_summary": patch_event.prod_cr_summary,
             "prod_cr_allowed": prod_cr_allowed,
+            # CVE threat intel (NVD/EPSS/CISA KEV)
+            "intel_map": intel_ctx["intel_map"],
+            "risk_scores": intel_ctx["risk_scores"],
+            "kev_count": intel_ctx["kev_count"],
+            "high_epss_count": intel_ctx["high_epss_count"],
             # Feedback message (optional)
             "message": message,
         },
@@ -591,6 +641,10 @@ def vulnerability_analysis(
             "LOW": counts.get(Severity.LOW, 0),
         }
 
+    intel_ctx = _build_intel_context(
+        db, before_vulns, after_vulns, fixed_vulns, remaining_vulns
+    )
+
     return templates.TemplateResponse(
         "vulnerability_analysis.html",
         {
@@ -614,5 +668,54 @@ def vulnerability_analysis(
             "remaining_severity": severity_to_dict(remaining_severity),
             # Severity counts with enum keys for template iteration
             "fixed_severity_counts": fixed_severity,
+            # CVE threat intel (NVD/EPSS/CISA KEV)
+            "intel_map": intel_ctx["intel_map"],
+            "risk_scores": intel_ctx["risk_scores"],
+            "kev_count": intel_ctx["kev_count"],
+            "high_epss_count": intel_ctx["high_epss_count"],
         },
     )
+
+
+@router.post("/patch-events/{patch_event_id}/refresh-intel")
+def refresh_threat_intel(
+    request: Request,
+    patch_event_id: int,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Force-refresh the NVD/EPSS/CISA KEV enrichment for this event's CVEs.
+
+    Useful if the cached data is stale or if enrichment failed during the
+    initial snapshot generation (e.g., no internet connectivity at that time).
+    """
+    patch_event = (
+        db.query(PatchEvent)
+        .filter(PatchEvent.id == patch_event_id)
+        .first()
+    )
+    if patch_event is None:
+        raise HTTPException(status_code=404, detail="Patch event not found")
+
+    snapshots = list(patch_event.snapshots)
+    split = extract_before_after_vulnerabilities(snapshots)
+    all_cves = []
+    for vulns in (split[SnapshotType.BEFORE], split[SnapshotType.AFTER]):
+        for v in vulns:
+            if v.cve:
+                all_cves.append(v.cve)
+
+    if all_cves:
+        enrich_cves_bulk(db, all_cves, force_refresh=True)
+        message = (
+            f"Refreshed threat intel for {len(set(all_cves))} unique CVEs "
+            f"from NVD / EPSS / CISA KEV."
+        )
+    else:
+        message = "No CVEs to enrich for this patch event."
+
+    url = request.url_for(
+        "get_patch_event_detail",
+        patch_event_id=patch_event_id,
+    )
+    params = urlencode({"message": message})
+    return RedirectResponse(url=f"{url}?{params}", status_code=303)

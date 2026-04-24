@@ -3,7 +3,7 @@ from enum import Enum
 
 from sqlalchemy import Boolean, Column, Date, DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -106,7 +106,7 @@ class Vulnerability(Base):
         index=True,
     )
     synthetic_id = Column(String(50), nullable=False)
-    cve = Column(String(20), nullable=True)
+    cve = Column(String(20), nullable=True, index=True)
     plugin_id = Column(String(20), nullable=True)
     severity = Column(SAEnum(Severity), nullable=False)
     host = Column(String(100), nullable=False)
@@ -116,3 +116,81 @@ class Vulnerability(Base):
         "ScanSnapshot",
         back_populates="vulnerabilities",
     )
+
+
+class CVEIntelligence(Base):
+    """Cached threat intelligence for a CVE, sourced from NVD/EPSS/CISA KEV.
+
+    This is a local cache to avoid repeatedly hitting public APIs and to
+    allow offline viewing/analysis. All data comes from free public sources.
+    """
+
+    __tablename__ = "cve_intelligence"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cve_id = Column(String(20), unique=True, nullable=False, index=True)
+
+    # NVD data
+    description = Column(Text, nullable=True)
+    cvss_v3_score = Column(Float, nullable=True)
+    cvss_v3_severity = Column(String(20), nullable=True)
+    cvss_v3_vector = Column(String(100), nullable=True)
+    published_date = Column(DateTime, nullable=True)
+    last_modified_date = Column(DateTime, nullable=True)
+    nvd_url = Column(String(255), nullable=True)
+
+    # EPSS data (Exploit Prediction Scoring System)
+    epss_score = Column(Float, nullable=True)  # 0.0 to 1.0
+    epss_percentile = Column(Float, nullable=True)  # 0.0 to 1.0
+
+    # CISA KEV (Known Exploited Vulnerabilities) data
+    is_kev = Column(Boolean, default=False, nullable=False)
+    kev_date_added = Column(DateTime, nullable=True)
+    kev_due_date = Column(DateTime, nullable=True)
+    kev_required_action = Column(Text, nullable=True)
+    kev_ransomware_use = Column(String(50), nullable=True)
+
+    # Vendor / product info
+    vendor = Column(String(100), nullable=True)
+    product = Column(String(100), nullable=True)
+
+    # Metadata
+    enrichment_status = Column(String(20), default="PENDING", nullable=False)
+    # Values: PENDING, SUCCESS, PARTIAL, FAILED, NOT_FOUND
+    enrichment_error = Column(Text, nullable=True)
+    last_enriched_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AIAnalysis(Base):
+    """AI-generated analysis artifacts tied to a patch event.
+
+    Stores briefings, recommendations, and post-patch summaries produced
+    by the AI agent. User approval is tracked for advisory mode.
+    """
+
+    __tablename__ = "ai_analysis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patch_event_id = Column(
+        Integer,
+        ForeignKey("patch_events.id"),
+        nullable=False,
+        index=True,
+    )
+    analysis_type = Column(String(50), nullable=False)
+    # Values: pre_patch_briefing, post_patch_analysis, recommendation,
+    # pattern_insight, cr_summary
+
+    content = Column(Text, nullable=False)  # Natural language content
+    structured_data = Column(Text, nullable=True)  # JSON-encoded extras
+
+    model_name = Column(String(50), nullable=True)
+    tokens_used = Column(Integer, nullable=True)
+
+    # Advisory mode: user approval tracking
+    user_approved = Column(Boolean, default=False, nullable=False)
+    user_rejected = Column(Boolean, default=False, nullable=False)
+    user_feedback = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
