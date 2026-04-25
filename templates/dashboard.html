@@ -363,17 +363,33 @@
       </div>
 
       <div class="flex flex-col gap-2 items-end">
-        <a href="/patch-events/new"
-           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg
-                  bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400
-                  text-white font-semibold text-sm shadow-lg shadow-indigo-500/20 transition">
-          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-          </svg>
-          New Patch Event
-        </a>
+        <div class="flex gap-2">
+          <form id="scanForm" method="post" action="/auto-scan-services"
+                onsubmit="this.querySelector('button').disabled=true;
+                          this.querySelector('button').textContent='Scanning…';">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg
+                           bg-slate-700 hover:bg-slate-600 border border-slate-500/50
+                           text-slate-200 font-semibold text-sm transition">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              Scan All Services
+            </button>
+          </form>
+          <a href="/patch-events/new"
+             class="inline-flex items-center gap-2 px-4 py-2 rounded-lg
+                    bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400
+                    text-white font-semibold text-sm shadow-lg shadow-indigo-500/20 transition">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            New Patch Event
+          </a>
+        </div>
         <span class="text-[11px] text-slate-400">
-          Automatically scans, enriches, and analyzes on creation.
+          Scan pulls live CVE data from NVD for each service.
         </span>
       </div>
     </div>

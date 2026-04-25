@@ -1,102 +1,117 @@
-# AMI Patch Evidence Tracker
+# Vulnerability Intelligence Hub
 
-> **A modern web application for automating vulnerability patch evidence collection and lifecycle management**
+> **An autonomous, AI-powered CVE tracking and patch lifecycle management system grounded in real public threat intelligence**
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)
+![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.136+-green.svg)
+![Ollama](https://img.shields.io/badge/LLM-Ollama%20llama3.1%3A8b-purple.svg)
+![NVD](https://img.shields.io/badge/Data-NVD%20%7C%20EPSS%20%7C%20CISA%20KEV-red.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ---
 
-## Overview
+## What This Is
 
-The **AMI Patch Evidence Tracker** streamlines the patch management workflow by automating evidence collection, vulnerability analysis, and change request documentation. It provides a centralized platform for tracking patch events across DEV, STAGE, and PROD environments with a modern, interactive user interface.
+The **Vulnerability Intelligence Hub** is a full-stack web application that autonomously scans enterprise security and IT-operations software for known CVEs, enriches them with real-world threat intelligence from official government and industry sources, and uses a **locally-running large language model** to generate actionable security briefings — with zero cloud dependencies, zero API costs, and zero data leaving your machine.
 
-### The Problem It Solves
+The moment you launch it, it goes to work. No manual setup. No clicking through wizards. No paid subscriptions.
+
+---
+
+## The Problem It Solves
+
+Security teams managing tools like Nessus Manager, Trend Micro, Grafana Enterprise, Burp Suite, Tenable Security Center, and ServiceNow MID Server face a common challenge: knowing *which CVEs affect their stack right now, how dangerous they actually are, and what to do first.* Traditional answers involve expensive commercial scanners, paid threat feeds, and manual analyst time.
+
+This application replaces all of that with free official data, a local LLM, and a composite risk model that ranks vulnerabilities by real-world exploitability — not just theoretical severity.
 
 | Challenge | Solution |
 |-----------|----------|
-| **Manual evidence collection** takes hours | Automated BEFORE/AFTER scan comparison in seconds |
-| **Inconsistent CR documentation** across teams | Standardized, auto-generated CR summaries |
-| **No centralized patch tracking** | Single dashboard for all environments |
-| **Error-prone vulnerability diffing** | Automated computation with zero human error |
-| **Compliance audit gaps** | Complete audit trail with timestamped evidence |
-
-### Core Capabilities
-
-1. **Capture** - Create and manage patch events with metadata (service, environment, AMI ID, date)
-2. **Generate** - Produce synthetic BEFORE and AFTER vulnerability scan snapshots
-3. **Compute** - Automatically identify fixed vulnerabilities through set difference
-4. **Analyze** - Visualize data with interactive charts, tables, and exportable reports
-5. **Document** - Generate CR-ready summaries for STAGE and PROD deployments
-6. **Enforce** - Control patch lifecycle progression with the State Pattern
-
-> **Note:** This application uses **synthetic data only** for demonstration and development purposes. It does not connect to any real vulnerability scanners or production systems.
+| **No visibility into CVE exposure** | Auto-scans NVD on launch for every registered service |
+| **Raw CVSS scores don't reflect real risk** | Composite scoring: CVSS + EPSS exploit probability + CISA KEV status |
+| **AI tools leak sensitive data to the cloud** | 100% local LLM inference via Ollama — nothing leaves your machine |
+| **Manual patch evidence collection** | Automated BEFORE/AFTER snapshot comparison |
+| **Inconsistent CR documentation** | Auto-generated Change Request summaries for STAGE and PROD |
+| **No audit trail** | Full lifecycle state machine with timestamped transitions |
 
 ---
 
-## Application Views
+## How It Works — End to End
 
-### 1. Patch Events Dashboard
-The central hub for managing all patch events across your infrastructure.
+### 1. Autonomous CVE Discovery
 
-| Feature | Description |
-|---------|-------------|
-| **Summary Statistics** | Animated counters showing totals by environment and lifecycle phase |
-| **Real-time Search** | Instantly filter events by typing keywords |
-| **Advanced Filters** | Filter by service, environment, or lifecycle state |
-| **Sortable Columns** | Click any column header to sort ascending/descending |
-| **Pagination** | Configurable page sizes (5, 10, 25, 50 items) |
-| **View Toggle** | Switch between table and card layouts |
-| **Quick Actions** | One-click access to details or vulnerability analysis |
+On startup, the application queries the **NIST National Vulnerability Database (NVD) API v2** for each registered service using keyword searches. It creates a BEFORE snapshot for each service — a real-time picture of its current CVE exposure — automatically, with no user interaction required.
 
-### 2. Patch Event Detail
-The command center for individual patch events with guided workflow.
+A **"Scan All Services"** button on the dashboard lets you trigger a fresh scan at any time.
 
-| Feature | Description |
-|---------|-------------|
-| **Metadata Card** | Service, environment, AMI ID, patch date, and notes |
-| **Visual Workflow Tracker** | 3-step progress indicator (BEFORE → AFTER → Compute) |
-| **Collapsible Sections** | Expandable panels for BEFORE, AFTER, and Fixed vulnerabilities |
-| **Severity Badges** | Color-coded counts (Critical, High, Medium, Low) |
-| **Lifecycle Controls** | State transition dropdown with validation |
-| **CR Generation** | One-click STAGE and PROD change request summaries |
+### 2. Three-Layer Threat Intelligence Enrichment
 
-### 3. Vulnerability Analysis
-Comprehensive data visualization and reporting dashboard.
+Every CVE discovered is enriched from three free official sources in a single pipeline pass:
 
-| Feature | Description |
-|---------|-------------|
-| **Interactive Charts** | Radar, Bar/Line, and Donut/Polar charts (Chart.js) |
-| **Chart Type Switching** | Toggle between visualization styles |
-| **Tabbed Tables** | Fixed, Remaining, Before, and After vulnerability views |
-| **Search & Filter** | Real-time filtering by keyword or severity |
-| **Sortable Tables** | Click column headers to sort data |
-| **Export Options** | Download as CSV or JSON |
-| **Report Generation** | Risk score, severity breakdown, and recommendations |
-| **Print Support** | Print-friendly formatting |
+| Source | Data Provided | Update Frequency |
+|--------|--------------|-----------------|
+| **NIST NVD** | CVSS v3.1 score, attack vector, description, vendor/product | Per-CVE, 7-day cache |
+| **FIRST.org EPSS** | Exploit probability (0–100%) — likelihood of active exploitation within 30 days | Bulk lookup, 7-day cache |
+| **CISA KEV** | Known Exploited Vulnerabilities — CVEs already weaponized in real attacks | Full catalog, 24-hour cache |
+
+### 3. Composite Risk Scoring
+
+A custom formula combines all three intelligence signals into a single 0–100 risk score:
+
+```
+Risk Score = (CVSS / 10 × 60) + (EPSS × 30) + (10 if on CISA KEV list)
+```
+
+This means a CVSS 9.8 vulnerability with no active exploitation scores lower than a CVSS 7.5 that's already on the CISA active exploitation list. **Risk is measured by real-world threat, not theoretical severity.**
+
+### 4. Local LLM Intelligence (Ollama — 100% Private)
+
+A locally-running **llama3.1:8b** model via Ollama reads the enriched CVE data and produces:
+
+- **AI Fleet Briefing** — state of the entire fleet, top risks by CVE ID and service name, prioritized remediation steps with specific service references
+- **Per-Event Patch Briefings** — before/after patch comparisons, what was fixed, what still matters, posture verdict (LOW / MEDIUM / HIGH / CRITICAL)
+- **AI Action Plan Narratives** — professional Markdown explanations for each step in the patch lifecycle
+- **Interactive AI Chat** — ask follow-up questions about any specific patch event; the model is grounded to exact numbers and cannot hallucinate CVE data
+
+The LLM is architecturally grounded: every prompt contains exact CVSS scores, EPSS percentiles, and CVE IDs. The model is instructed to use only those numbers and name specific services — never generic references.
+
+### 5. Patch Lifecycle State Machine
+
+Every patch event progresses through a deterministic lifecycle with enforced transitions:
+
+```
+DEV_EVIDENCE_CAPTURED → DEV_VERIFIED → STAGE_CR_READY → STAGE_PATCHED → PROD_CR_READY → PROD_PATCHED → CLOSED
+```
+
+Invalid transitions are blocked. You cannot promote to STAGE without DEV evidence. You cannot close without reaching PROD_PATCHED. At each stage, the system auto-generates professional Change Request documents.
 
 ---
 
-## User Experience
+## Dashboard Features
 
-### Modern UI/UX Design
-- **Animated backgrounds** with floating orbs and hex grid patterns
-- **Glassmorphism** with blur effects and gradient borders
-- **3D card effects** with smooth hover animations
-- **Responsive layout** for desktop and tablet
+### Intelligence KPI Cards
+- **Unique CVEs** — total distinct CVEs across all services (with enrichment count)
+- **CISA KEV** — CVEs that are actively exploited in real-world attacks
+- **High EPSS** — CVEs with ≥ 70% probability of being exploited within 30 days
+- **CVSS ≥ 9.0** — critical-severity CVEs by base score
+- **Patch Effectiveness** — percentage of known CVEs addressed across patched events
+- **Patch Events** — total events tracked with evidence count
 
-### Keyboard Shortcuts
-| Key | Action |
-|-----|--------|
-| `N` | Create new patch event |
-| `D` | Go to Dashboard |
-| `A` | Go to Analysis view |
-| `?` | Show shortcuts help |
-| `Esc` | Close modals |
+Every card is clickable and opens a drill-down panel showing the underlying CVE list.
 
-### Toast Notifications
-Real-time, non-intrusive feedback for all user actions.
+### Visualizations
+- **Severity Distribution** — switchable Donut / Bar / Radar / Polar chart
+- **Top Remaining CVEs by Real-World Risk** — ranked by composite score (CISA KEV × EPSS × CVSS)
+- **Top Services by Risk** — service-level aggregate risk breakdown
+- **Patch Effectiveness Trend** — chronological effectiveness line chart across events
+- **CVSS and EPSS Histograms** — distribution of CVEs across score buckets
+
+### AI Fleet Briefing
+Lazy-loaded on each dashboard visit. Checks Ollama availability, generates a structured briefing with:
+- State of the fleet (service-specific, not generic)
+- Top 3 highest-risk CVEs with IDs and scores
+- 3 prioritized remediation actions naming specific services
+- Overall posture verdict
+- 10-minute in-process cache; one-click regeneration
 
 ---
 
@@ -104,48 +119,47 @@ Real-time, non-intrusive feedback for all user actions.
 
 | Layer | Technology |
 |-------|------------|
-| **Backend** | Python 3.10+, FastAPI, SQLAlchemy ORM |
-| **Database** | SQLite (local file) |
-| **Templating** | Jinja2 |
-| **Frontend** | Tailwind CSS, DaisyUI, Chart.js |
-| **Design Pattern** | State Pattern for lifecycle management |
-
-### Patch Lifecycle (State Pattern)
-
-```text
-DEV_EVIDENCE_CAPTURED → DEV_VERIFIED → STAGE_CR_READY → STAGE_PATCHED → PROD_CR_READY → PROD_PATCHED → CLOSED
-```
-
-The State Pattern enforces valid transitions and prevents promotion without required evidence.
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy ORM |
+| **Database** | SQLite (zero-config, portable) |
+| **Templating** | Jinja2 (Starlette 1.0 compatible) |
+| **Frontend** | Tailwind CSS, Chart.js 4, marked.js, tippy.js |
+| **Local LLM** | Ollama (llama3.1:8b, local inference — no internet required) |
+| **CVE Intelligence** | NVD API v2, FIRST.org EPSS API, CISA KEV JSON feed |
+| **Architecture** | Service layer + State Machine + async background scanning |
 
 ---
 
 ## Project Structure
 
 ```text
-AMI_Patch_Evidence_Tracker/
+Autonomous-AIAGENT-VUM/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI app entrypoint
-│   ├── database.py             # SQLite + SQLAlchemy configuration
-│   ├── models.py               # ORM models and enums
-│   ├── state.py                # State Pattern for patch lifecycle
+│   ├── main.py                     # FastAPI entrypoint + background NVD auto-scan
+│   ├── database.py                 # SQLite + SQLAlchemy configuration
+│   ├── models.py                   # ORM models: Service, PatchEvent, Vulnerability,
+│   │                               #   CVEIntelligence, AIAnalysis
+│   ├── state.py                    # Patch lifecycle state machine
 │   ├── services/
-│   │   ├── __init__.py
-│   │   ├── synthetic_data.py   # Synthetic scan generators
-│   │   ├── diff.py             # Fixed vuln diff + severity counts
-│   │   └── cr_text.py          # CR summary text generation
+│   │   ├── nvd_cpe_scan.py         # NVD keyword search + auto patch event creation  ← NEW
+│   │   ├── cve_enrichment.py       # NVD / EPSS / CISA KEV enrichment + caching
+│   │   ├── fleet_intel.py          # Fleet-wide risk aggregation for dashboard
+│   │   ├── ai_agent.py             # LLM briefing, chat, and action narrative generation
+│   │   ├── ollama_client.py        # Local Ollama API wrapper
+│   │   ├── action_planner.py       # Deterministic patch lifecycle recommender
+│   │   ├── synthetic_data.py       # Synthetic BEFORE/AFTER snapshot generation
+│   │   ├── diff.py                 # Fixed vulnerability diffing + severity counts
+│   │   ├── cr_text.py              # Change Request document generation
+│   │   └── real_cve_catalog.py     # Curated CVE pool for synthetic mode
 │   └── web/
-│       ├── __init__.py
-│       └── routes.py           # Dashboard + patch event + analysis routes
+│       └── routes.py               # All HTTP route handlers
 ├── templates/
-│   ├── base.html               # Shared layout + synthetic data banner
-│   ├── dashboard.html          # Interactive dashboard with search/sort/pagination
-│   ├── patch_event_detail.html # Patch event detail + workflow + collapsible sections
-│   └── vulnerability_analysis.html  # Full analysis view with charts and reports
-├── static/                     # Static assets (CSS/JS/images if needed)
-├── requirements.txt            # Runtime Python dependencies
-└── README.md                   # This file
+│   ├── base.html
+│   ├── dashboard.html              # Intelligence hub with KPIs, charts, AI briefing
+│   ├── patch_event_detail.html     # Event detail + AI chat + lifecycle controls
+│   └── vulnerability_analysis.html # Full analysis view with charts and export
+├── static/
+├── requirements.txt
+└── README.md
 ```
 
 ---
@@ -154,120 +168,134 @@ AMI_Patch_Evidence_Tracker/
 
 ### Prerequisites
 
-- Python **3.10+** (recommended)
-- Git
-- A terminal (PowerShell / cmd on Windows, or bash/zsh on macOS/Linux)
+- **Python 3.12+**
+- **Ollama** — for local LLM inference
+
+#### Install Ollama
+
+Download from [ollama.com](https://ollama.com) and pull the model:
+
+```bash
+ollama pull llama3.1:8b
+```
+
+Verify it runs:
+
+```bash
+ollama serve
+```
+
+Ollama must be running at `http://localhost:11434` before starting the application. The dashboard shows a live Ollama status indicator.
+
+---
 
 ### 1. Clone the Repository
 
-Replace `<REPO_URL>` with your GitHub URL for this project.
-
 ```bash
 git clone <REPO_URL>
-cd project_6_wingsurf
+cd Autonomous-AIAGENT-VUM
 ```
 
 ### 2. Create and Activate a Virtual Environment
 
-**Windows (PowerShell):**
-
+**Windows:**
 ```bash
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+python -m venv env
+env\Scripts\activate
 ```
 
 **macOS / Linux:**
-
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv env
+source env/bin/activate
 ```
 
 ### 3. Install Dependencies
-
-Install the runtime dependencies from `requirements.txt`:
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Install development tools (linting/formatting):
+### 4. Run the Application
 
 ```bash
-pip install black isort flake8 flake8-html
+python -m uvicorn app.main:app --reload --port 8080
 ```
+
+> **Note for Windows users:** Port 8000 is frequently reserved by Hyper-V or WSL. Use `--port 8080` or any available port above 8000.
+
+Open your browser at **http://127.0.0.1:8080/**
 
 ---
 
-## Running the Web Application
+## First Launch Behavior
 
-From the project root (with the virtual environment activated):
+On first launch the application:
 
-```bash
-python -m uvicorn app.main:app --reload
-```
+1. Creates the SQLite database (`patch_tracker.db`) automatically
+2. Seeds all default services: Nessus Manager, Trend Micro, Tenable Security Center, ServiceNow MID Server, Grafana Enterprise, Burp Suite
+3. **Immediately starts a background NVD scan** — querying the National Vulnerability Database for real CVEs affecting each service
+4. Populates the dashboard with real CVE data, EPSS scores, and CISA KEV flags within ~60 seconds
+5. The AI Fleet Briefing auto-loads once Ollama is available and CVE data is present
 
-Then open your browser at:
-
-- http://127.0.0.1:8000/
-
-You should see the **Dashboard** screen with:
-
-- A synthetic data disclaimer banner
-- An empty patch event list (on first run)
-- A "Create Patch Event" button
-
-All data is stored in a local SQLite file (`patch_tracker.db`) created automatically in the project directory on first startup.
+**No manual steps required.** Refresh the dashboard after ~60 seconds to see the full intelligence picture.
 
 ---
 
-## Quick Start Workflow
+## Environment Variables (Optional)
 
-Follow these steps to experience the full application workflow:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NVD_API_KEY` | *(none)* | Free NVD API key — raises rate limit from 5 req/30s to 50 req/30s. Get one at [nvd.nist.gov/developers](https://nvd.nist.gov/developers/request-an-api-key) |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama daemon URL |
+| `OLLAMA_MODEL` | `llama3.1:8b` | Model to use for inference |
+| `OLLAMA_TIMEOUT_S` | `600` | Inference timeout in seconds |
+
+---
+
+## Workflow: From Scan to Closed
 
 ```text
-1. CREATE    →  Click "New Patch Event" on the Dashboard
-2. CONFIGURE →  Select service, environment, AMI ID, and patch date
-3. GENERATE  →  Click "Gen" for BEFORE scan (creates synthetic vulnerabilities)
-4. GENERATE  →  Click "Gen" for AFTER scan (simulates post-patch state)
-5. COMPUTE   →  Click "Compute" to identify fixed vulnerabilities
-6. ANALYZE   →  Click "View Full Analysis" for charts and reports
-7. DOCUMENT  →  Generate CR summaries for STAGE and PROD
-8. PROMOTE   →  Use lifecycle transitions to move through environments
+1. AUTO-SCAN  →  Launch app; NVD scan runs automatically for all services
+2. REVIEW     →  Dashboard shows real CVEs ranked by composite risk score
+3. ANALYZE    →  AI Fleet Briefing names specific CVEs and services to address
+4. PATCH      →  Apply fixes to your actual systems (outside this app)
+5. GENERATE   →  Run AFTER snapshot to capture post-patch state
+6. COMPUTE    →  System diffs BEFORE/AFTER; shows what's fixed vs remaining
+7. BRIEF      →  AI generates per-event patch briefing with verdict
+8. DOCUMENT   →  Auto-generate STAGE and PROD Change Request summaries
+9. PROMOTE    →  Advance through DEV → STAGE → PROD → CLOSED lifecycle
 ```
 
-### Lifecycle Rules
+### Manual Scan
 
-- Cannot promote to STAGE/PROD states without DEV evidence
-- Cannot close until `PROD_PATCHED` state is reached
-- Invalid transitions are blocked with error messages
-
-### Synthetic Data
-
-All CVEs, plugin IDs, AMI IDs, and hosts are **randomly generated synthetic values**. No real vulnerability scanners or production systems are accessed.
+At any time, click **"Scan All Services"** on the dashboard to run a fresh NVD scan. New patch events are created alongside existing ones, building a historical record of your CVE exposure over time.
 
 ---
 
-## Development
+## Data Privacy
 
-### Code Quality
+| Data Type | Stays Local? |
+|-----------|-------------|
+| CVE IDs submitted to NVD | Yes — only public CVE IDs are sent |
+| LLM prompts and responses | Yes — Ollama runs entirely on your machine |
+| Vulnerability data | Yes — stored in local SQLite only |
+| EPSS / KEV lookups | Public CVE IDs only; no company context sent |
 
-```bash
-black app              # Format code
-isort app              # Sort imports
-flake8 .               # Run linter
-```
+No company names, hostnames, internal identifiers, or sensitive context ever leave your machine.
 
-### Configuration
+---
 
-Create `.flake8` in project root:
+## Keyboard Shortcuts
 
-```ini
-[flake8]
-max-line-length = 119
-exclude = .git,__pycache__,.venv
-```
+| Key | Action |
+|-----|--------|
+| `N` | New Patch Event |
+| `D` | Go to Dashboard |
+| `A` | Go to Analysis view |
+| `?` | Show shortcuts help |
+| `Esc` | Close modals |
 
 ---
 
@@ -275,21 +303,21 @@ exclude = .git,__pycache__,.venv
 
 | Benefit | Impact |
 |---------|--------|
-| **Time Savings** | Evidence collection reduced from hours to minutes |
-| **Consistency** | Standardized CR documentation across all teams |
-| **Accuracy** | Zero human error in vulnerability diffing |
-| **Compliance** | Complete audit trail with timestamped evidence |
-| **Visibility** | Single source of truth for all patch events |
-| **Scalability** | Handles hundreds of events efficiently |
+| **Real threat intelligence** | CVSS + EPSS + CISA KEV from official sources — same data government agencies use |
+| **AI-powered prioritization** | Composite risk scoring surfaces what to fix first, not just what scores highest |
+| **Zero cost** | Every data source is free; local LLM inference has no per-call cost |
+| **Zero data exposure** | Full air-gap capability; sensitive environments can run with no internet after first CVE cache |
+| **Audit trail** | Complete timestamped lifecycle with Change Request documentation |
+| **Speed** | Full fleet CVE briefing in under 60 seconds from cold start |
 
 ---
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License — See LICENSE file for details.
 
 ---
 
 ## Author
 
-Developed as part of the OpenClassrooms workplace project requirements.
+Built by Chayim Euris Garcia — combining real public threat intelligence, local LLM inference, and production-grade software architecture into a single autonomous security intelligence platform.

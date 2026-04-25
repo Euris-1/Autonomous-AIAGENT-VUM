@@ -530,6 +530,52 @@ def get_intel_map(db: Session, cve_ids: List[str]) -> Dict[str, CVEIntelligence]
     return {row.cve_id: row for row in rows}
 
 
+def enrich_epss_kev_only(db: Session, cve_ids: List[str]) -> None:
+    """Add EPSS + KEV data to existing CVEIntelligence rows without hitting NVD.
+
+    Used after pre-populating intel from an NVD search response to avoid
+    making redundant per-CVE NVD calls for data we already have.
+    """
+    unique_cves = sorted({c.strip().upper() for c in cve_ids if c})
+    if not unique_cves:
+        return
+
+    existing = {
+        row.cve_id: row
+        for row in db.query(CVEIntelligence)
+        .filter(CVEIntelligence.cve_id.in_(unique_cves))
+        .all()
+    }
+
+    with httpx.Client() as client:
+        epss_map = _fetch_epss_bulk(client, unique_cves)
+        try:
+            kev_catalog = _load_kev_catalog(client)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("KEV catalog load failed: %s", exc)
+            kev_catalog = {}
+
+    for cve_id in unique_cves:
+        intel = existing.get(cve_id)
+        if not intel:
+            continue
+        epss = epss_map.get(cve_id)
+        if epss:
+            intel.epss_score = epss.get("epss_score")
+            intel.epss_percentile = epss.get("epss_percentile")
+        kev = kev_catalog.get(cve_id)
+        if kev:
+            intel.is_kev = True
+            intel.kev_date_added = kev.get("kev_date_added")
+            intel.kev_due_date = kev.get("kev_due_date")
+            intel.kev_required_action = kev.get("kev_required_action")
+            intel.kev_ransomware_use = kev.get("kev_ransomware_use")
+        else:
+            intel.is_kev = False
+
+    db.commit()
+
+
 def compute_risk_score(intel: Optional[CVEIntelligence]) -> float:
     """Compute a composite risk score (0-100) from intel data.
 
