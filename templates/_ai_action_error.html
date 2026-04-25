@@ -1,0 +1,15 @@
+{# Inline error fragment returned by /ai-action-preview and /ai-approve. #}
+<div class="rounded-2xl p-4 bg-rose-500/10 border border-rose-400/40
+            text-rose-200 text-sm space-y-2"
+     id="aiActionErrorCard">
+  <div class="flex items-center gap-2 font-semibold">
+    <span class="text-xl">⚠</span>
+    <span>Could not run that action</span>
+  </div>
+  <p class="text-xs leading-relaxed">{{ error_message }}</p>
+  <div class="flex items-center justify-end pt-1">
+    <button type="button" class="ap-secondary-btn" onclick="continueAfterAction()">
+      Back to plan
+    </button>
+  </div>
+</div>

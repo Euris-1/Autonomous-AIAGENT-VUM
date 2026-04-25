@@ -1,0 +1,19 @@
+{# Single chat message bubble.
+   role = "user" | "assistant" | "system"
+   content = markdown-ish text from the LLM or the user #}
+
+{% set is_user = role == "user" %}
+<div class="chat-msg flex {{ 'justify-end' if is_user else 'justify-start' }} mb-2"
+     data-role="{{ role }}">
+  <div class="max-w-[85%] px-3 py-2 rounded-lg text-sm leading-relaxed whitespace-pre-wrap
+              {% if is_user %}
+                bg-indigo-600/80 text-white rounded-br-sm
+              {% else %}
+                bg-slate-800/80 text-slate-100 border border-indigo-500/20 rounded-bl-sm
+              {% endif %}">
+    <div class="text-[10px] uppercase tracking-wider opacity-60 mb-1">
+      {{ 'You' if is_user else 'AI Analyst' }}
+    </div>
+    <div class="msg-body">{{ content }}</div>
+  </div>
+</div>

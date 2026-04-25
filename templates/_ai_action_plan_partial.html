@@ -1,0 +1,170 @@
+{# ===================================================================
+   AI Action Plan partial.
+
+   Rendered as an HTML fragment by:
+     GET  /patch-events/{id}/ai-action-plan
+     POST /patch-events/{id}/ai-approve
+
+   The action codes come from the deterministic recommender in
+   action_planner.py - the LLM only writes the optional narrative.
+   =================================================================== #}
+
+<style>
+  .ap-card {
+    background: linear-gradient(135deg, rgba(30,27,75,.55), rgba(15,23,42,.75));
+    border: 1px solid rgba(139,92,246,.3);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .ap-step {
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: border-color .2s, transform .15s;
+  }
+  .ap-step.primary {
+    background: linear-gradient(135deg, rgba(99,102,241,.18), rgba(139,92,246,.12));
+    border: 1px solid rgba(139,92,246,.55);
+    box-shadow: 0 4px 24px -4px rgba(139,92,246,.35);
+  }
+  .ap-step.secondary {
+    background: rgba(15,23,42,.55);
+    border: 1px dashed rgba(99,102,241,.3);
+  }
+  .ap-step:hover { transform: translateY(-1px); }
+  .ap-risk {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: .65rem; text-transform: uppercase; letter-spacing: .1em;
+    font-weight: 700;
+  }
+  .ap-risk-safe     { background: rgba(34,197,94,.15);  color: #86efac; border: 1px solid rgba(34,197,94,.4); }
+  .ap-risk-standard { background: rgba(99,102,241,.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,.4); }
+  .ap-risk-high     { background: rgba(239,68,68,.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,.4); }
+  .ap-approve-btn {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; font-weight: 600;
+    padding: 8px 18px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.1);
+    transition: transform .12s, box-shadow .2s;
+    font-size: .85rem;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .ap-approve-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px -8px rgba(139,92,246,.7);
+  }
+  .ap-approve-btn:disabled { opacity: .6; cursor: wait; transform: none; }
+  .ap-secondary-btn {
+    background: rgba(51,65,85,.6); color: #cbd5e1;
+    padding: 6px 14px; border-radius: 8px; font-size: .8rem;
+    border: 1px solid rgba(99,102,241,.25);
+  }
+  .ap-secondary-btn:hover { background: rgba(71,85,105,.8); color: #e0e7ff; }
+  .ap-narrative {
+    background: rgba(15,23,42,.5);
+    border: 1px solid rgba(99,102,241,.18);
+    border-radius: 10px; padding: 12px 14px;
+    color: #cbd5e1; font-size: .82rem;
+  }
+  .ap-narrative strong { color: #fef3c7; }
+  .ap-narrative h2, .ap-narrative h3 { color: #e0e7ff; font-weight: 700; font-size: .9rem; margin-top: 8px; }
+</style>
+
+<div class="ap-card space-y-4" id="aiActionPlanPanel">
+
+  {# ---------- toast: success / error from a just-executed action ---- #}
+  {% if success_message %}
+    <div class="rounded-lg p-3 text-sm border bg-emerald-500/10 border-emerald-400/40 text-emerald-200">
+      <span class="font-semibold">✓ Done.</span> {{ success_message }}
+    </div>
+  {% endif %}
+  {% if error_message %}
+    <div class="rounded-lg p-3 text-sm border bg-rose-500/10 border-rose-400/40 text-rose-200">
+      <span class="font-semibold">⚠ Could not execute:</span> {{ error_message }}
+    </div>
+  {% endif %}
+
+  {# ---------- header ---------- #}
+  <div class="flex items-start justify-between gap-3">
+    <div>
+      <div class="text-[11px] uppercase tracking-[.18em] text-indigo-300 font-bold">
+        🧭 AI Action Plan
+      </div>
+      <p class="text-xs text-slate-400 mt-1">
+        Current state:
+        <code class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-indigo-200 font-mono text-[11px]">{{ plan.current_state }}</code>
+      </p>
+    </div>
+    <button type="button"
+            class="text-[11px] text-slate-400 hover:text-indigo-200 underline"
+            onclick="refreshActionPlan(true)">
+      regenerate narrative
+    </button>
+  </div>
+
+  {# ---------- LLM narrative (optional) ---------- #}
+  {% if plan.narrative %}
+    <div class="ap-narrative" data-raw-md="{{ plan.narrative|e }}">
+      <pre class="whitespace-pre-wrap font-sans">{{ plan.narrative }}</pre>
+    </div>
+  {% endif %}
+
+  {# ---------- terminal state ---------- #}
+  {% if plan.is_terminal %}
+    <div class="rounded-lg p-4 border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm">
+      <strong>Patch event closed.</strong> Lifecycle is complete - no further
+      actions needed.
+    </div>
+  {% elif not plan.recommendations %}
+    <div class="rounded-lg p-4 border border-slate-600/40 bg-slate-800/40 text-slate-300 text-sm">
+      No recommendations available right now.
+    </div>
+  {% else %}
+
+  {# ---------- recommendations ---------- #}
+  <div class="space-y-3">
+    {% for rec in plan.recommendations %}
+    <div class="ap-step {{ 'primary' if rec.is_primary else 'secondary' }}">
+      <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex-1 min-w-[240px]">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            {% if rec.is_primary %}
+              <span class="text-[10px] font-bold tracking-wider uppercase
+                           bg-indigo-500/30 text-indigo-100 border border-indigo-400/40
+                           px-2 py-0.5 rounded">Recommended next</span>
+            {% endif %}
+            <span class="ap-risk ap-risk-{{ rec.risk }}">{{ rec.risk }}</span>
+          </div>
+          <div class="text-base font-semibold text-white">{{ rec.label }}</div>
+          <p class="text-xs text-slate-300 mt-1">{{ rec.rationale }}</p>
+          <p class="text-[11px] text-slate-500 mt-1 italic">{{ rec.description }}</p>
+        </div>
+
+        <button type="button"
+                class="self-center {{ 'ap-approve-btn' if rec.is_primary else 'ap-secondary-btn' }}"
+                onclick="openActionPreview({{ patch_event.id }}, '{{ rec.code }}')">
+          {% if rec.is_primary %}
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            Approve
+          {% else %}
+            Approve
+          {% endif %}
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% endif %}
+
+  <p class="text-[10px] text-slate-500 italic pt-1 border-t border-slate-700/40 mt-2">
+    Advisory mode: the AI never mutates state on its own. Every action above is
+    validated against the lifecycle state machine, then executed only after you
+    click approve.
+  </p>
+</div>
+
+{# JS handlers live in patch_event_detail.html so they survive partial
+   re-renders. innerHTML insertion does not execute embedded <script>
+   tags, which silently broke the Approve button. #}

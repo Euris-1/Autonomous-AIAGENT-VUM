@@ -1,0 +1,123 @@
+{# ===================================================================
+   Post-action result card.
+
+   Rendered by POST /patch-events/{id}/ai-approve on success.
+   Shows BEFORE / AFTER / FIXED counts, the lifecycle transition that
+   just happened, and ranked recommendations for the highest-risk
+   remaining CVEs.
+   =================================================================== #}
+
+<div class="ap-result rounded-2xl border p-5 space-y-4
+            bg-gradient-to-br from-emerald-950/60 to-slate-900/60
+            border-emerald-400/40 shadow-[0_8px_32px_-8px_rgba(34,197,94,.4)]"
+     id="aiActionResultCard">
+
+  {# ---------- header ---------- #}
+  <div class="flex items-start justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div class="text-3xl">✓</div>
+      <div>
+        <div class="text-[10px] uppercase tracking-[.18em] font-bold text-emerald-300">
+          Action complete
+        </div>
+        <div class="text-lg font-bold text-white mt-0.5">{{ result.action.label }}</div>
+        <div class="text-xs text-emerald-200 mt-0.5">{{ result.executor_message }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ---------- state transition (if any) ---------- #}
+  {% if result.state_changed %}
+  <div class="flex items-center gap-2 text-xs">
+    <code class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[11px]">{{ result.state_before }}</code>
+    <svg class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+    </svg>
+    <code class="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/40 text-emerald-200 font-mono text-[11px]">{{ result.state_after }}</code>
+  </div>
+  {% endif %}
+
+  {# ---------- BEFORE / AFTER / FIXED metrics ---------- #}
+  {% if result.metrics.before_count or result.metrics.after_count %}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+    <div class="rounded-lg p-3 bg-rose-500/10 border border-rose-400/30">
+      <div class="text-[10px] uppercase tracking-wider text-rose-300/80">Vulns BEFORE patching</div>
+      <div class="text-2xl font-bold text-rose-200 mt-1">{{ result.metrics.before_count }}</div>
+    </div>
+    <div class="rounded-lg p-3 bg-amber-500/10 border border-amber-400/30">
+      <div class="text-[10px] uppercase tracking-wider text-amber-300/80">Vulns remaining AFTER</div>
+      <div class="text-2xl font-bold text-amber-200 mt-1">{{ result.metrics.after_count }}</div>
+    </div>
+    <div class="rounded-lg p-3 bg-emerald-500/10 border border-emerald-400/30">
+      <div class="text-[10px] uppercase tracking-wider text-emerald-300/80">Vulns fixed</div>
+      <div class="text-2xl font-bold text-emerald-200 mt-1">{{ result.metrics.fixed_count }}</div>
+    </div>
+    <div class="rounded-lg p-3 bg-indigo-500/10 border border-indigo-400/30">
+      <div class="text-[10px] uppercase tracking-wider text-indigo-300/80">Effectiveness</div>
+      <div class="text-2xl font-bold mt-1
+        {% if result.metrics.effectiveness_pct >= 80 %}text-emerald-200
+        {% elif result.metrics.effectiveness_pct >= 50 %}text-amber-200
+        {% else %}text-rose-200{% endif %}">
+        {{ result.metrics.effectiveness_pct }}%
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ---------- top remaining CVEs ---------- #}
+  {% if result.metrics.top_remaining %}
+  <div>
+    <div class="text-[11px] uppercase tracking-wider text-slate-300 font-semibold mb-2">
+      ⚠ Top remaining vulnerabilities ({{ result.metrics.after_count }} total)
+    </div>
+    <div class="space-y-1.5">
+      {% for r in result.metrics.top_remaining %}
+      <div class="flex items-center gap-2 text-xs rounded-md bg-slate-900/60 border border-slate-700/60 px-3 py-2">
+        <a href="https://nvd.nist.gov/vuln/detail/{{ r.cve }}" target="_blank"
+           class="font-mono font-bold text-indigo-300 hover:text-indigo-100 underline-offset-2 hover:underline">{{ r.cve }}</a>
+        <span class="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold
+          {% if r.severity == 'CRITICAL' %}bg-rose-500/20 text-rose-200 border border-rose-400/30
+          {% elif r.severity == 'HIGH' %}bg-orange-500/20 text-orange-200 border border-orange-400/30
+          {% elif r.severity == 'MEDIUM' %}bg-amber-500/20 text-amber-200 border border-amber-400/30
+          {% else %}bg-slate-600/30 text-slate-300 border border-slate-500/30{% endif %}">{{ r.severity }}</span>
+        {% if r.kev %}
+        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/30
+                     text-rose-100 border border-rose-400/50">KEV</span>
+        {% endif %}
+        {% if r.cvss is not none %}
+        <span class="text-[11px] text-slate-300">CVSS {{ r.cvss }}</span>
+        {% endif %}
+        {% if r.epss is not none %}
+        <span class="text-[11px] text-slate-400">EPSS {{ (r.epss * 100)|round|int }}%</span>
+        {% endif %}
+        <span class="text-[11px] text-slate-400 ml-auto">{{ r.hosts }} host(s)</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ---------- recommendations ---------- #}
+  {% if result.recommendations %}
+  <div class="rounded-xl p-4 bg-indigo-950/40 border border-indigo-400/30">
+    <div class="text-[11px] uppercase tracking-wider font-semibold text-indigo-300 mb-2">
+      🤖 Recommendations
+    </div>
+    <ul class="space-y-1.5 text-sm text-slate-200 list-disc pl-5">
+      {% for rec in result.recommendations %}
+      <li>{{ rec }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ---------- continue / done ---------- #}
+  <div class="flex items-center justify-end gap-2 pt-2 border-t border-emerald-400/20">
+    <button type="button" class="ap-approve-btn" onclick="continueAfterAction()">
+      Continue to next step
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+      </svg>
+    </button>
+  </div>
+</div>

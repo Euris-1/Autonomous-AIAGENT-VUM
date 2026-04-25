@@ -1,0 +1,122 @@
+{# ===================================================================
+   Pre-action approval card.
+
+   Rendered by GET /patch-events/{id}/ai-action-preview?action_code=X
+   Shown after the user clicks "Approve" on a recommendation. The
+   operator MUST click "Confirm" inside this card before any state is
+   actually mutated.
+   =================================================================== #}
+
+<div class="ap-preview rounded-2xl border p-5 space-y-4
+            bg-gradient-to-br from-indigo-950/70 to-purple-950/60
+            border-indigo-400/40 shadow-[0_8px_32px_-8px_rgba(99,102,241,.45)]"
+     id="aiActionPreviewCard">
+
+  {# ---------- header ---------- #}
+  <div class="flex items-start justify-between gap-3">
+    <div>
+      <div class="text-[10px] uppercase tracking-[.18em] font-bold text-indigo-300">
+        Pending approval
+      </div>
+      <div class="text-lg font-bold text-white mt-0.5">
+        {{ preview.action.label }}
+      </div>
+      <div class="text-xs text-slate-400 mt-0.5">{{ preview.action.description }}</div>
+    </div>
+    <span class="ap-risk ap-risk-{{ preview.action.risk }}">{{ preview.action.risk }}</span>
+  </div>
+
+  {# ---------- LLM-style question ---------- #}
+  <div class="rounded-lg p-3 bg-slate-900/60 border border-indigo-500/20">
+    <div class="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold mb-1">
+      🤖 AI Agent
+    </div>
+    <p class="text-sm text-slate-100 leading-relaxed" data-md="{{ preview.question|e }}">
+      {{ preview.question }}
+    </p>
+  </div>
+
+  {# ---------- target context ---------- #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+    <div class="rounded-lg p-2.5 bg-slate-800/60 border border-slate-700/60">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Service</div>
+      <div class="font-semibold text-white truncate" title="{{ preview.metrics.service }}">
+        {{ preview.metrics.service }}
+      </div>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-800/60 border border-slate-700/60">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Environment</div>
+      <div class="font-semibold
+        {% if preview.metrics.environment == 'PROD' %}text-rose-300
+        {% elif preview.metrics.environment == 'STAGE' %}text-amber-300
+        {% else %}text-emerald-300{% endif %}">
+        {{ preview.metrics.environment }}
+      </div>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-800/60 border border-slate-700/60 col-span-2 md:col-span-1">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">AMI</div>
+      <code class="block font-mono text-[11px] text-indigo-200 truncate"
+            title="{{ preview.metrics.ami_id }}">{{ preview.metrics.ami_id }}</code>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-800/60 border border-slate-700/60">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Hosts scanned</div>
+      <div class="font-semibold text-white">{{ preview.metrics.host_count }}</div>
+    </div>
+  </div>
+
+  {# ---------- patch metrics so far ---------- #}
+  {% if preview.metrics.before_count or preview.metrics.after_count %}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+    <div class="rounded-lg p-2.5 bg-slate-900/60 border border-slate-700/40">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Vulns BEFORE</div>
+      <div class="text-xl font-bold text-rose-300">{{ preview.metrics.before_count }}</div>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-900/60 border border-slate-700/40">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Vulns AFTER</div>
+      <div class="text-xl font-bold text-amber-300">{{ preview.metrics.after_count }}</div>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-900/60 border border-slate-700/40">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Fixed</div>
+      <div class="text-xl font-bold text-emerald-300">{{ preview.metrics.fixed_count }}</div>
+    </div>
+    <div class="rounded-lg p-2.5 bg-slate-900/60 border border-slate-700/40">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500">Effectiveness</div>
+      <div class="text-xl font-bold
+        {% if preview.metrics.effectiveness_pct >= 80 %}text-emerald-300
+        {% elif preview.metrics.effectiveness_pct >= 50 %}text-amber-300
+        {% else %}text-rose-300{% endif %}">
+        {{ preview.metrics.effectiveness_pct }}%
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ---------- rationale + risk note ---------- #}
+  <div class="text-xs text-slate-300 italic border-l-2 border-indigo-400/40 pl-3">
+    {{ preview.action.rationale }}
+  </div>
+
+  {% if preview.metrics.kev_remaining %}
+  <div class="rounded-lg p-2.5 bg-rose-500/10 border border-rose-400/40 text-rose-200 text-xs">
+    ⚠ <strong>{{ preview.metrics.kev_remaining }}</strong> CISA KEV CVE(s) still
+    present. Consider whether you want to proceed before resolving them.
+  </div>
+  {% endif %}
+
+  {# ---------- approve / cancel ---------- #}
+  <div class="flex items-center justify-end gap-2 pt-2 border-t border-indigo-500/20">
+    <button type="button" class="ap-secondary-btn"
+            onclick="cancelActionPreview()">Cancel</button>
+    <form method="post"
+          action="/patch-events/{{ patch_event.id }}/ai-approve"
+          onsubmit="return confirmActionPreview(this);">
+      <input type="hidden" name="action_code" value="{{ preview.action.code }}">
+      <button type="submit" class="ap-approve-btn">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+        Confirm &amp; Execute
+      </button>
+    </form>
+  </div>
+</div>
