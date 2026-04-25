@@ -7,6 +7,7 @@
 {% block content %}
 <script src="https://unpkg.com/@popperjs/core@2"></script>
 <script src="https://unpkg.com/tippy.js@6"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <style>
   .animated-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); }
@@ -72,6 +73,93 @@
   .enhanced-table tbody td:first-child { border-radius: 8px 0 0 8px; }
   .enhanced-table tbody td:last-child { border-radius: 0 8px 8px 0; }
   .kbd-hint { padding: 2px 6px; background: rgba(30, 30, 45, 0.9); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 4px; font-size: 0.6rem; color: #64748b; font-family: monospace; }
+
+  /* ---------------- Vulnerability Analytics panel ---------------- */
+  .chart-tile {
+    background: linear-gradient(160deg, rgba(30, 30, 50, 0.85), rgba(20, 20, 40, 0.95));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 16px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .25s, transform .15s;
+  }
+  .chart-tile:hover {
+    border-color: rgba(139, 92, 246, .45);
+    transform: translateY(-2px);
+  }
+  .chart-tile::after {
+    content: '';
+    position: absolute; inset: 0 0 auto 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(139,92,246,.7), transparent);
+    opacity: .8;
+  }
+  .chart-canvas-wrap { position: relative; height: 220px; }
+  .chart-tile h4 {
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .12em;
+    color: #94a3b8; font-weight: 700; margin-bottom: 6px;
+  }
+  .chart-tile .tile-headline {
+    font-size: 1.6rem; font-weight: 800;
+    background: linear-gradient(135deg, #818cf8, #c4b5fd);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* ---------------- Lifecycle pipeline ---------------- */
+  .lifecycle-pipe {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+  }
+  @media (max-width: 900px) { .lifecycle-pipe { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+  .lifecycle-stage {
+    position: relative;
+    padding: 10px 8px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    background: rgba(20, 20, 35, 0.55);
+    text-align: center;
+    transition: all .25s ease;
+  }
+  .lifecycle-stage .ls-num {
+    width: 28px; height: 28px; margin: 0 auto 6px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: .8rem;
+    background: rgba(99, 102, 241, 0.15);
+    color: #cbd5e1;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+  }
+  .lifecycle-stage .ls-label {
+    font-size: .65rem; text-transform: uppercase; letter-spacing: .1em;
+    color: #94a3b8; font-weight: 600;
+  }
+  .lifecycle-stage.completed {
+    background: linear-gradient(160deg, rgba(34,197,94,.18), rgba(34,197,94,.05));
+    border-color: rgba(34,197,94,.45);
+  }
+  .lifecycle-stage.completed .ls-num {
+    background: rgba(34,197,94,.25); color: #86efac; border-color: rgba(34,197,94,.55);
+  }
+  .lifecycle-stage.completed .ls-label { color: #bbf7d0; }
+  .lifecycle-stage.current {
+    background: linear-gradient(160deg, rgba(99,102,241,.28), rgba(139,92,246,.15));
+    border-color: rgba(139,92,246,.6);
+    box-shadow: 0 8px 28px -12px rgba(139,92,246,.7), 0 0 0 1px rgba(139,92,246,.4);
+    transform: translateY(-2px);
+  }
+  .lifecycle-stage.current .ls-num {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; border-color: rgba(255,255,255,.25);
+    animation: pulseRing 2s ease-in-out infinite;
+  }
+  .lifecycle-stage.current .ls-label { color: #e0e7ff; }
+  .lifecycle-stage.upcoming { opacity: .55; }
+  @keyframes pulseRing {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,.55); }
+    50%      { box-shadow: 0 0 0 8px rgba(139,92,246,0); }
+  }
 </style>
 
 <div class="animated-bg"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="hex-grid"></div></div>
@@ -134,38 +222,292 @@
     </div>
   </div>
   <div class="lg:col-span-2 space-y-6">
+    {# ================================================================
+       Auto-pilot status card. New events run BEFORE -> AFTER -> diff ->
+       STAGE CR automatically on creation, so the user no longer has to
+       click "Generate AFTER" or "Generate STAGE CR". For legacy events
+       that pre-date auto-pilot, a single "Run Auto-Pipeline" button
+       brings them up to date in one shot.
+       ================================================================ #}
     <div class="glass-card p-6">
-      <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>Vulnerability Scan Workflow</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div class="workflow-step {% if before_count > 0 %}completed{% else %}active{% endif %}">
-          <div class="step-icon {% if before_count > 0 %}completed{% else %}active{% endif %}">{% if before_count > 0 %}✓{% else %}1{% endif %}</div>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+          Evidence Pipeline
+        </h2>
+        {% if dev_evidence_available %}
+        <span class="text-[10px] uppercase tracking-[.18em] px-3 py-1 rounded-full
+                     bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold">
+          ✓ Auto-pilot complete
+        </span>
+        {% else %}
+        <span class="text-[10px] uppercase tracking-[.18em] px-3 py-1 rounded-full
+                     bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold">
+          legacy event · auto-pilot not run
+        </span>
+        {% endif %}
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+        <div class="workflow-step {% if before_count > 0 %}completed{% else %}pending{% endif %}">
+          <div class="step-icon {% if before_count > 0 %}completed{% else %}pending{% endif %}">{% if before_count > 0 %}✓{% else %}1{% endif %}</div>
           <div class="flex-1"><div class="text-sm font-semibold">BEFORE Scan</div><div class="text-xs text-slate-400">{{ before_count }} vulns</div></div>
-          <form method="post" action="/patch-events/{{ patch_event.id }}/generate-before"><button type="submit" class="action-btn action-btn-outline text-xs py-2 px-3">{% if before_count > 0 %}Regen{% else %}Gen{% endif %}</button></form>
         </div>
-        <div class="workflow-step {% if after_count > 0 %}completed{% elif before_count > 0 %}active{% else %}pending{% endif %}">
-          <div class="step-icon {% if after_count > 0 %}completed{% elif before_count > 0 %}active{% else %}pending{% endif %}">{% if after_count > 0 %}✓{% else %}2{% endif %}</div>
+        <div class="workflow-step {% if after_count > 0 %}completed{% else %}pending{% endif %}">
+          <div class="step-icon {% if after_count > 0 %}completed{% else %}pending{% endif %}">{% if after_count > 0 %}✓{% else %}2{% endif %}</div>
           <div class="flex-1"><div class="text-sm font-semibold">AFTER Scan</div><div class="text-xs text-slate-400">{{ after_count }} vulns</div></div>
-          <form method="post" action="/patch-events/{{ patch_event.id }}/generate-after"><button type="submit" class="action-btn action-btn-outline text-xs py-2 px-3" {% if before_count == 0 %}disabled{% endif %}>{% if after_count > 0 %}Regen{% else %}Gen{% endif %}</button></form>
         </div>
-        <div class="workflow-step {% if dev_evidence_available %}completed{% elif before_count > 0 and after_count > 0 %}active{% else %}pending{% endif %}">
-          <div class="step-icon {% if dev_evidence_available %}completed{% elif before_count > 0 and after_count > 0 %}active{% else %}pending{% endif %}">{% if dev_evidence_available %}✓{% else %}3{% endif %}</div>
-          <div class="flex-1"><div class="text-sm font-semibold">Compute</div><div class="text-xs text-slate-400">{% if dev_evidence_available %}Done{% else %}Pending{% endif %}</div></div>
-          <form method="post" action="/patch-events/{{ patch_event.id }}/compute-evidence"><button type="submit" class="action-btn action-btn-primary text-xs py-2 px-3" {% if before_count == 0 or after_count == 0 %}disabled{% endif %}>Compute</button></form>
+        <div class="workflow-step {% if dev_evidence_available %}completed{% else %}pending{% endif %}">
+          <div class="step-icon {% if dev_evidence_available %}completed{% else %}pending{% endif %}">{% if dev_evidence_available %}✓{% else %}3{% endif %}</div>
+          <div class="flex-1"><div class="text-sm font-semibold">Diff & Evidence</div><div class="text-xs text-slate-400">{% if dev_evidence_available %}Computed{% else %}Pending{% endif %}</div></div>
+        </div>
+        <div class="workflow-step {% if patch_event.stage_cr_summary %}completed{% else %}pending{% endif %}">
+          <div class="step-icon {% if patch_event.stage_cr_summary %}completed{% else %}pending{% endif %}">{% if patch_event.stage_cr_summary %}✓{% else %}4{% endif %}</div>
+          <div class="flex-1"><div class="text-sm font-semibold">STAGE CR Text</div><div class="text-xs text-slate-400">{% if patch_event.stage_cr_summary %}Drafted{% else %}Pending{% endif %}</div></div>
         </div>
       </div>
+
       {% if dev_evidence_available %}
-      <div class="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 rounded-2xl p-6 text-center">
-        <div class="text-4xl mb-3">🎉</div><h3 class="text-xl font-bold text-white mb-2">Evidence Ready!</h3>
-        <p class="text-slate-300 text-sm mb-4">View the full interactive report with charts, severity breakdowns, and export options.</p>
-        <a href="/patch-events/{{ patch_event.id }}/analysis" class="cta-btn inline-flex"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>View Full Analysis</a>
+      <div class="bg-gradient-to-r from-emerald-500/15 to-indigo-500/15
+                  border border-emerald-500/30 rounded-2xl p-5 flex flex-col
+                  md:flex-row items-center gap-4 justify-between">
+        <div class="flex items-center gap-3 text-left">
+          <div class="text-3xl">🎉</div>
+          <div>
+            <h3 class="text-lg font-bold text-white">Evidence Ready</h3>
+            <p class="text-slate-300 text-xs">
+              BEFORE/AFTER scans, diff, and STAGE CR draft were all built
+              automatically when this event was created.
+            </p>
+          </div>
+        </div>
+        <a href="/patch-events/{{ patch_event.id }}/analysis"
+           class="cta-btn inline-flex whitespace-nowrap">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+          View Full Analysis
+        </a>
       </div>
-      {% elif before_count > 0 and after_count > 0 %}
-      <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 text-center"><div class="text-3xl mb-2">⚡</div><h3 class="text-lg font-semibold text-amber-300 mb-2">Almost There!</h3><p class="text-slate-400 text-sm">Click "Compute" to calculate fixed vulnerabilities.</p></div>
       {% else %}
-      <div class="bg-slate-500/10 border border-slate-500/30 rounded-2xl p-6 text-center"><div class="text-3xl mb-2">📊</div><h3 class="text-lg font-semibold text-slate-300 mb-2">Generate Scan Data</h3><p class="text-slate-400 text-sm">Complete the workflow steps above.</p></div>
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5
+                  flex flex-col md:flex-row items-center gap-4 justify-between">
+        <div class="flex items-center gap-3 text-left">
+          <div class="text-3xl">🚀</div>
+          <div>
+            <h3 class="text-lg font-bold text-amber-100">One-click Auto-Pilot</h3>
+            <p class="text-amber-200/80 text-xs">
+              Run BEFORE → AFTER → Diff → STAGE CR in one shot. No more
+              clicking each step. Idempotent — skips anything already done.
+            </p>
+          </div>
+        </div>
+        <form method="post" action="/patch-events/{{ patch_event.id }}/run-auto-pipeline">
+          <button type="submit" class="cta-btn whitespace-nowrap">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Run Auto-Pipeline
+          </button>
+        </form>
+      </div>
       {% endif %}
+
+      {# Power-user manual controls hidden behind a disclosure so they
+         don't clutter the happy path. #}
+      <details class="mt-4 group">
+        <summary class="cursor-pointer text-[11px] uppercase tracking-[.18em]
+                        text-slate-500 hover:text-slate-300 transition-colors
+                        list-none flex items-center gap-2">
+          <svg class="h-3 w-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          advanced · regenerate individual steps
+        </summary>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
+          <form method="post" action="/patch-events/{{ patch_event.id }}/generate-before">
+            <button type="submit" class="action-btn action-btn-outline text-xs py-2 px-3 w-full justify-center">Regen BEFORE</button>
+          </form>
+          <form method="post" action="/patch-events/{{ patch_event.id }}/generate-after">
+            <button type="submit" class="action-btn action-btn-outline text-xs py-2 px-3 w-full justify-center" {% if before_count == 0 %}disabled{% endif %}>Regen AFTER</button>
+          </form>
+          <form method="post" action="/patch-events/{{ patch_event.id }}/compute-evidence">
+            <button type="submit" class="action-btn action-btn-outline text-xs py-2 px-3 w-full justify-center" {% if before_count == 0 or after_count == 0 %}disabled{% endif %}>Re-diff</button>
+          </form>
+        </div>
+      </details>
     </div>
+    <!-- ================================================================
+         AI Action Plan - shown ALWAYS at the top of the patch event page.
+         Replaces the manual "Generate STAGE CR / Generate AFTER / etc."
+         buttons with an AI-recommended next step + one-click approve.
+         ================================================================ -->
+    <div id="aiActionPlanContainer"
+         data-patch-event-id="{{ patch_event.id }}"
+         class="space-y-2">
+      <div class="text-sm text-slate-400 p-4">Loading guided action plan…</div>
+    </div>
+
+    {# ================================================================
+       Lifecycle pipeline - visual progress strip across all 7 stages.
+       Highlights the current stage with a pulsing glow and dims any
+       upcoming stages so the operator can see where they are at a
+       glance.
+       ================================================================ #}
+    {% if lifecycle_pipeline %}
+    <div class="glass-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+          <span class="text-base">🛤️</span> Patch Lifecycle Pipeline
+        </h3>
+        {% set ns = namespace(idx=0) %}
+        {% for stage in lifecycle_pipeline %}{% if stage.status == 'current' %}{% set ns.idx = loop.index %}{% endif %}{% endfor %}
+        <span class="text-[10px] uppercase tracking-[.18em] text-slate-400">
+          stage {{ ns.idx }} of {{ lifecycle_pipeline | length }}
+        </span>
+      </div>
+      <div class="lifecycle-pipe">
+        {% for stage in lifecycle_pipeline %}
+        <div class="lifecycle-stage {{ stage.status }}" title="{{ stage.code }}">
+          <div class="ls-num">
+            {% if stage.status == 'completed' %}✓{% else %}{{ loop.index }}{% endif %}
+          </div>
+          <div class="ls-label">{{ stage.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ================================================================
+       Vulnerability Analytics - three Chart.js charts powered by data
+       computed in the route. Only rendered when at least a BEFORE scan
+       exists, otherwise the charts would be empty.
+       ================================================================ #}
+    {% if before_count > 0 or after_count > 0 %}
+    <div class="glass-card p-6" id="vulnAnalyticsCard">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span class="text-xl">📊</span> Vulnerability Analytics
+        </h3>
+        <div class="text-[10px] uppercase tracking-[.18em] text-slate-400">
+          live · synthetic data
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {# --- BEFORE / AFTER severity stacked bars --- #}
+        <div class="chart-tile md:col-span-2">
+          <h4>BEFORE vs AFTER · severity breakdown</h4>
+          <div class="text-xs text-slate-400 mb-2">
+            How many vulnerabilities at each severity level the patch
+            actually moved.
+          </div>
+          <div class="chart-canvas-wrap">
+            <canvas id="severityCompareChart"></canvas>
+          </div>
+        </div>
+
+        {# --- Fixed / Remaining donut --- #}
+        <div class="chart-tile">
+          <h4>Patch effectiveness</h4>
+          <div class="flex items-baseline gap-2">
+            <div class="tile-headline">{{ chart_data.effectiveness_pct }}%</div>
+            <div class="text-xs text-slate-400">
+              {{ chart_data.fixed_count }} of {{ chart_data.before_count }} fixed
+            </div>
+          </div>
+          <div class="chart-canvas-wrap mt-2">
+            <canvas id="effectivenessChart"></canvas>
+          </div>
+        </div>
+
+        {# --- Top remaining CVEs by composite risk score --- #}
+        {% if chart_data.top_remaining %}
+        <div class="chart-tile md:col-span-3">
+          <h4>Top {{ chart_data.top_remaining | length }} remaining CVEs · ranked by KEV+EPSS+CVSS risk</h4>
+          <div class="text-xs text-slate-400 mb-2">
+            Hover any bar to see severity, host count, and risk score.
+            <a class="text-indigo-300 hover:text-indigo-100 underline-offset-2 hover:underline ml-1"
+               href="/patch-events/{{ patch_event.id }}/analysis">open full analysis →</a>
+          </div>
+          <div class="chart-canvas-wrap" style="height: 260px;">
+            <canvas id="topRemainingChart"></canvas>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Embed chart data as JSON so the chart-init script below can read
+       it without HTML-escaping headaches. #}
+    <script id="patchEventChartData" type="application/json">
+      {{ chart_data | tojson }}
+    </script>
+    {% endif %}
+
     {% if before_vulnerabilities %}
+    <!-- AI Analyst Panel (Ollama-backed, advisory-only) -->
+    {% if dev_evidence_available %}
+    <div class="glass-card p-6" id="aiPanelCard">
+      <div class="collapsible-header" onclick="toggleCollapsible('aiSection', this)">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">🧠</span>
+          <h3 class="text-lg font-bold text-white">AI Analyst</h3>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20
+                       text-indigo-300 border border-indigo-400/30">
+            Local · Ollama
+          </span>
+          <span id="aiStatusBadge" class="text-[10px] text-slate-500"></span>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 collapse-icon"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      <div id="aiSection" class="collapsible-content">
+        <div class="pt-4 space-y-4">
+          <!-- Briefing area (filled by JS) -->
+          <div id="aiBriefingContainer"
+               data-patch-event-id="{{ patch_event.id }}">
+            <div class="flex items-center gap-2 text-sm text-slate-400">
+              <div class="animate-pulse">⏳</div>
+              <span>Checking local Ollama availability…</span>
+            </div>
+          </div>
+
+          <!-- Chat widget -->
+          <div id="aiChatWrap" class="hidden pt-2 border-t border-indigo-500/20">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs uppercase tracking-wider text-indigo-300">
+                Ask a follow-up question
+              </div>
+              <button type="button"
+                      class="text-[10px] text-indigo-400 hover:text-indigo-200 underline"
+                      onclick="clearAiChat()">
+                clear
+              </button>
+            </div>
+            <div id="aiChatMessages"
+                 class="max-h-72 overflow-y-auto pr-1 pb-2"></div>
+            <form id="aiChatForm" class="flex gap-2" autocomplete="off"
+                  onsubmit="return sendAiChat(event);">
+              <input type="text"
+                     id="aiChatInput"
+                     placeholder="e.g. Is this safe to promote to STAGE?"
+                     class="form-input flex-1 text-sm"
+                     maxlength="500" />
+              <button type="submit"
+                      class="action-btn action-btn-primary text-sm px-4"
+                      id="aiChatSend">
+                Ask
+              </button>
+            </form>
+            <p class="text-[10px] text-slate-500 italic mt-1">
+              Grounded in this patch event's data. Advisory only — never
+              executes state changes.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {% set b_crit = before_severity_counts.CRITICAL or 0 %}{% set b_high = before_severity_counts.HIGH or 0 %}{% set b_med = before_severity_counts.MEDIUM or 0 %}{% set b_low = before_severity_counts.LOW or 0 %}
     <div class="glass-card p-6">
       <div class="collapsible-header" onclick="toggleCollapsible('beforeSection', this)">
@@ -240,10 +582,428 @@
 
 <dialog id="shortcutsModal" class="modal"><div class="modal-box glass-card"><h3 class="font-bold text-lg mb-4">⌨️ Keyboard Shortcuts</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span>Dashboard</span><span class="kbd-hint">D</span></div><div class="flex justify-between"><span>Analysis</span><span class="kbd-hint">A</span></div><div class="flex justify-between"><span>Shortcuts</span><span class="kbd-hint">?</span></div></div><div class="modal-action"><form method="dialog"><button class="btn">Close</button></form></div></div></dialog>
 
+<!-- Markdown renderer for the AI briefing -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 function showToast(msg, dur=3000) { const t=document.getElementById('toast'); document.getElementById('toastMessage').textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), dur); }
 function toggleCollapsible(id, header) { const c=document.getElementById(id); const i=header.querySelector('.collapse-icon'); c.classList.toggle('open'); i.classList.toggle('open'); }
+
+// ============================================================
+// AI Action Plan - deterministic recommender + optional LLM narrative
+// Exposed as window.loadActionPlanInto so the partial JS can re-fetch
+// the plan after a cancel or successful action.
+// ============================================================
+// Re-renders any markdown narrative inside the action-plan panel.
+// Called after every fetch-and-swap because innerHTML doesn't run scripts
+// and the partial uses data-raw-md placeholders.
+function renderActionPlanMarkdown() {
+  if (typeof marked === 'undefined') return;
+  document.querySelectorAll('#aiActionPlanContainer [data-raw-md]')
+    .forEach(function (el) {
+      try {
+        var md = el.getAttribute('data-raw-md') || '';
+        el.innerHTML = '<div>' + marked.parse(md) + '</div>';
+      } catch (_) {}
+    });
+}
+
+window.loadActionPlanInto = function () {
+  const wrap = document.getElementById('aiActionPlanContainer');
+  if (!wrap) return;
+  const id = wrap.dataset.patchEventId;
+  wrap.innerHTML =
+    '<div class="text-sm text-slate-400 p-4">Loading guided action plan…</div>';
+  // First pass: fast, no narrative. Second pass quietly upgrades with
+  // the LLM narrative once Ollama responds.
+  fetch(`/patch-events/${id}/ai-action-plan?narrative=false`)
+    .then(r => r.text())
+    .then(html => { wrap.innerHTML = html; renderActionPlanMarkdown(); })
+    .then(() => fetch(`/patch-events/${id}/ai-action-plan?narrative=true`))
+    .then(r => r ? r.text() : null)
+    .then(html => {
+      if (!html) return;
+      const panel = document.getElementById('aiActionPlanPanel');
+      if (panel) panel.outerHTML = html;
+      renderActionPlanMarkdown();
+    })
+    .catch(err => {
+      wrap.innerHTML = `
+        <div class="p-3 rounded-lg bg-rose-500/10 border border-rose-400/40 text-rose-200 text-sm">
+          Could not load action plan: ${err.message}
+        </div>`;
+    });
+};
+window.loadActionPlanInto();
+
+// ============================================================
+// Two-step approval handlers (DEFINED HERE, NOT in the partial,
+// because innerHTML insertion doesn't run <script> tags inside
+// fetched HTML - that silently broke the Approve button).
+// ============================================================
+window.openActionPreview = function (eventId, code) {
+  var panel = document.getElementById('aiActionPlanPanel');
+  if (panel) panel.innerHTML =
+    '<div class="text-sm text-slate-400 p-4">Preparing approval brief…</div>';
+  fetch('/patch-events/' + eventId + '/ai-action-preview?action_code=' +
+        encodeURIComponent(code))
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      if (panel) panel.outerHTML = html;
+      renderActionPlanMarkdown();
+    })
+    .catch(function (err) {
+      if (panel) panel.innerHTML =
+        '<div class="text-sm text-rose-300 p-4">Could not load preview: ' +
+        err.message + '</div>';
+    });
+};
+
+window.confirmActionPreview = function (form) {
+  var btn = form.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+  var fd = new FormData(form);
+  fetch(form.action, { method: 'POST', body: fd })
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      var card = document.getElementById('aiActionPreviewCard') ||
+                 document.getElementById('aiActionPlanPanel');
+      if (card) card.outerHTML = html;
+      renderActionPlanMarkdown();
+    })
+    .catch(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
+      alert('Approval failed: ' + err);
+    });
+  return false;
+};
+
+window.cancelActionPreview = function () {
+  var card = document.getElementById('aiActionPreviewCard');
+  if (card) {
+    card.outerHTML =
+      '<div class="text-sm text-slate-400 p-4">Reloading plan…</div>';
+  }
+  window.loadActionPlanInto();
+};
+
+window.continueAfterAction = function () {
+  var card = document.getElementById('aiActionResultCard') ||
+             document.getElementById('aiActionErrorCard');
+  if (card) {
+    card.outerHTML =
+      '<div class="text-sm text-slate-400 p-4">Loading next step…</div>';
+  }
+  window.loadActionPlanInto();
+};
+
+window.refreshActionPlan = function (withNarrative) {
+  var m = window.location.pathname.match(/\/patch-events\/(\d+)/);
+  if (!m) return;
+  var url = '/patch-events/' + m[1] + '/ai-action-plan'
+            + (withNarrative ? '?narrative=true' : '?narrative=false');
+  var panel = document.getElementById('aiActionPlanPanel');
+  if (panel) panel.innerHTML =
+    '<div class="text-sm text-slate-400 p-4">Regenerating plan…</div>';
+  fetch(url)
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      if (panel) panel.outerHTML = html;
+      renderActionPlanMarkdown();
+    });
+};
+
+// ============================================================
+// AI Analyst panel - Ollama-backed, advisory only
+// ============================================================
+(function () {
+  const container = document.getElementById('aiBriefingContainer');
+  if (!container) return;
+  const patchEventId = container.dataset.patchEventId;
+  const statusBadge = document.getElementById('aiStatusBadge');
+  const chatWrap = document.getElementById('aiChatWrap');
+  const chatMessages = document.getElementById('aiChatMessages');
+
+  // --- Utility: render markdown into an element safely ---
+  function renderMarkdown(el) {
+    if (!el || typeof marked === 'undefined') return;
+    const raw = el.dataset.rawMarkdown || el.textContent || '';
+    try {
+      el.innerHTML = marked.parse(raw);
+    } catch (_) { /* leave the pre block */ }
+  }
+
+  // --- Step 1: check Ollama availability before offering to run it ---
+  async function checkStatus() {
+    try {
+      const r = await fetch('/ai-status', { cache: 'no-store' });
+      const data = await r.json();
+      if (!data.available) {
+        container.innerHTML = `
+          <div class="p-4 rounded-lg bg-amber-900/30 border border-amber-500/50 text-amber-200 text-sm">
+            <strong>Ollama not reachable.</strong><br>
+            Install Ollama from <a href="https://ollama.com" target="_blank" class="underline">ollama.com</a>,
+            then run <code>ollama pull ${data.configured_model || 'llama3.1:8b'}</code> and refresh this page.
+          </div>`;
+        return false;
+      }
+      const hasModel = (data.installed_models || []).some(m => m === data.configured_model);
+      if (!hasModel) {
+        container.innerHTML = `
+          <div class="p-4 rounded-lg bg-amber-900/30 border border-amber-500/50 text-amber-200 text-sm">
+            <strong>Ollama is running</strong> but the configured model
+            <code>${data.configured_model}</code> isn't installed yet.<br>
+            Run <code>ollama pull ${data.configured_model}</code> in a terminal, then click "Generate" below.
+            <div class="mt-3">
+              <button class="action-btn action-btn-outline text-xs"
+                      onclick="loadBriefing(true)">Generate anyway</button>
+            </div>
+          </div>`;
+        if (statusBadge) statusBadge.textContent = 'model missing';
+        return false;
+      }
+      if (statusBadge) statusBadge.textContent = data.configured_model;
+      return true;
+    } catch (err) {
+      container.innerHTML = `
+        <div class="p-4 rounded-lg bg-red-900/30 border border-red-500/50 text-red-200 text-sm">
+          Could not check AI status: ${err.message}
+        </div>`;
+      return false;
+    }
+  }
+
+  // --- Step 2: fetch the briefing partial and inject it ---
+  window.loadBriefing = async function (force = false) {
+    container.innerHTML = `
+      <div class="flex items-center gap-3 text-sm text-indigo-300">
+        <div class="spinner" style="width:18px;height:18px;border:2px solid rgba(99,102,241,.3);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite;"></div>
+        <span>Thinking locally via Ollama on your CPU. First run loads the 4.9 GB model into memory — typically 60-120 seconds. Subsequent briefings are cached and instant.</span>
+      </div>`;
+    try {
+      const url = `/patch-events/${patchEventId}/ai-briefing${force ? '?refresh=true' : ''}`;
+      const r = await fetch(url);
+      const html = await r.text();
+      container.innerHTML = html;
+      // Render any markdown blocks that came back with the fragment
+      container.querySelectorAll('[data-raw-markdown]').forEach(renderMarkdown);
+      if (chatWrap) chatWrap.classList.remove('hidden');
+    } catch (err) {
+      container.innerHTML = `
+        <div class="p-4 rounded-lg bg-red-900/30 border border-red-500/50 text-red-200 text-sm">
+          Briefing failed: ${err.message}
+        </div>`;
+    }
+  };
+
+  window.refreshBriefing = (_) => window.loadBriefing(true);
+
+  // --- Chat widget ---
+  function appendMessage(role, content) {
+    if (!chatMessages) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg flex ' + (role === 'user' ? 'justify-end' : 'justify-start') + ' mb-2';
+    const bubble = document.createElement('div');
+    bubble.className = 'max-w-[85%] px-3 py-2 rounded-lg text-sm leading-relaxed '
+      + (role === 'user'
+          ? 'bg-indigo-600/80 text-white rounded-br-sm'
+          : 'bg-slate-800/80 text-slate-100 border border-indigo-500/20 rounded-bl-sm');
+    const label = document.createElement('div');
+    label.className = 'text-[10px] uppercase tracking-wider opacity-60 mb-1';
+    label.textContent = role === 'user' ? 'You' : 'AI Analyst';
+    const body = document.createElement('div');
+    if (role === 'assistant' && typeof marked !== 'undefined') {
+      body.innerHTML = marked.parse(content);
+    } else {
+      body.textContent = content;
+    }
+    bubble.appendChild(label);
+    bubble.appendChild(body);
+    wrap.appendChild(bubble);
+    chatMessages.appendChild(wrap);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  const aiChatHistory = []; // {role, content}
+
+  window.sendAiChat = async function (event) {
+    event.preventDefault();
+    const input = document.getElementById('aiChatInput');
+    const sendBtn = document.getElementById('aiChatSend');
+    if (!input || !input.value.trim()) return false;
+    const question = input.value.trim();
+    input.value = '';
+    sendBtn.disabled = true;
+    sendBtn.textContent = '...';
+
+    appendMessage('user', question);
+    aiChatHistory.push({ role: 'user', content: question });
+
+    try {
+      const body = new FormData();
+      body.append('question', question);
+      body.append('history_json', JSON.stringify(aiChatHistory.slice(0, -1)));
+      const r = await fetch(`/patch-events/${patchEventId}/ai-chat`, {
+        method: 'POST',
+        body: body,
+      });
+      const html = await r.text();
+      // The endpoint returns an HTML fragment - inject it but also track history
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const msgBody = temp.querySelector('.msg-body');
+      const answer = msgBody ? msgBody.textContent : html;
+      appendMessage('assistant', answer);
+      aiChatHistory.push({ role: 'assistant', content: answer });
+    } catch (err) {
+      appendMessage('assistant', '_Request failed: ' + err.message + '_');
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Ask';
+      input.focus();
+    }
+    return false;
+  };
+
+  window.clearAiChat = function () {
+    aiChatHistory.length = 0;
+    if (chatMessages) chatMessages.innerHTML = '';
+  };
+
+  // Kick things off once the page is settled
+  document.addEventListener('DOMContentLoaded', async () => {
+    const ok = await checkStatus();
+    if (ok) window.loadBriefing(false);
+  });
+})();
+
 document.addEventListener('keydown', (e) => { if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return; switch(e.key) { case 'd': case 'D': window.location.href='/'; break; case 'a': case 'A': {% if not is_new and patch_event %}window.location.href='/patch-events/{{ patch_event.id }}/analysis';{% endif %} break; case '?': document.getElementById('shortcutsModal').showModal(); break; case 'Escape': document.querySelectorAll('dialog[open]').forEach(d=>d.close()); break; } });
+// ============================================================
+// Vulnerability Analytics charts (Chart.js v4)
+// Reads its data from the JSON <script> block emitted by the template
+// so we never have to deal with HTML-escaping inside JS.
+// ============================================================
+(function initVulnAnalytics() {
+  const dataNode = document.getElementById('patchEventChartData');
+  if (!dataNode || typeof Chart === 'undefined') return;
+  let cd;
+  try { cd = JSON.parse(dataNode.textContent); } catch (_) { return; }
+
+  const SEV_COLORS = {
+    CRITICAL: 'rgba(239, 68, 68, 0.85)',
+    HIGH:     'rgba(249, 115, 22, 0.85)',
+    MEDIUM:   'rgba(234, 179, 8, 0.85)',
+    LOW:      'rgba(34, 197, 94, 0.85)',
+  };
+  const sevList = cd.severity_order;
+
+  // ---- BEFORE / AFTER stacked severity bar ----
+  const cmpEl = document.getElementById('severityCompareChart');
+  if (cmpEl) {
+    new Chart(cmpEl.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ['BEFORE', 'AFTER'],
+        datasets: sevList.map((sev, i) => ({
+          label: sev,
+          data: [cd.before_severity[i], cd.after_severity[i]],
+          backgroundColor: SEV_COLORS[sev],
+          borderColor: SEV_COLORS[sev].replace('0.85', '1'),
+          borderWidth: 1,
+          borderRadius: 6,
+          stack: 'sev',
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 800, easing: 'easeOutQuart' },
+        scales: {
+          x: { stacked: true, ticks: { color: '#cbd5e1' }, grid: { display: false } },
+          y: { stacked: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.08)' } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: 'rgba(15,23,42,.95)', borderColor: 'rgba(99,102,241,.4)',
+            borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+          },
+        },
+      },
+    });
+  }
+
+  // ---- Effectiveness donut: Fixed vs Remaining ----
+  const effEl = document.getElementById('effectivenessChart');
+  if (effEl) {
+    new Chart(effEl.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Fixed', 'Remaining'],
+        datasets: [{
+          data: [cd.fixed_count, cd.remaining_count],
+          backgroundColor: ['rgba(34,197,94,.85)', 'rgba(251,191,36,.65)'],
+          borderColor: ['#22c55e', '#fbbf24'],
+          borderWidth: 2, hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '68%',
+        animation: { animateRotate: true, duration: 900 },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: 'rgba(15,23,42,.95)', borderColor: 'rgba(99,102,241,.4)',
+            borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+          },
+        },
+      },
+    });
+  }
+
+  // ---- Top remaining CVEs · horizontal bar ranked by risk ----
+  const topEl = document.getElementById('topRemainingChart');
+  if (topEl && Array.isArray(cd.top_remaining) && cd.top_remaining.length) {
+    const labels = cd.top_remaining.map(r => r.cve);
+    const data = cd.top_remaining.map(r => r.risk);
+    const colors = cd.top_remaining.map(r => SEV_COLORS[r.severity] || 'rgba(148,163,184,.7)');
+    new Chart(topEl.getContext('2d'), {
+      type: 'bar',
+      data: { labels, datasets: [{
+        label: 'Risk score', data, backgroundColor: colors,
+        borderColor: colors.map(c => c.replace(/0\.\d+\)/, '1)')),
+        borderWidth: 1, borderRadius: 8,
+      }] },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 800, easing: 'easeOutQuart' },
+        scales: {
+          x: { min: 0, max: 100, ticks: { color: '#94a3b8' },
+               grid: { color: 'rgba(148,163,184,.08)' } },
+          y: { ticks: { color: '#cbd5e1', font: { family: 'monospace', size: 11 } },
+               grid: { display: false } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(15,23,42,.95)', borderColor: 'rgba(99,102,241,.4)',
+            borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+            callbacks: {
+              label: function (ctx) {
+                const r = cd.top_remaining[ctx.dataIndex];
+                return [
+                  'Severity: ' + r.severity,
+                  'Hosts:    ' + r.hosts,
+                  'Risk:     ' + r.risk + ' / 100',
+                ];
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+})();
+
 document.addEventListener('DOMContentLoaded', () => { showToast('Page loaded! Press ? for shortcuts', 3000); if(typeof tippy!=='undefined') tippy('[title]',{animation:'scale'}); });
 </script>
 {% endblock %}
