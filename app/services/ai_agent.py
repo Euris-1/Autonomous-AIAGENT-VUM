@@ -48,10 +48,14 @@ logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = (
-    "You are a senior vulnerability-management analyst helping an SRE review a "
-    "patch event on an EC2 AMI. Be concise, factual, and action-oriented. "
+    "You are a senior vulnerability-management analyst reviewing CVE exposure "
+    "across enterprise security and IT-operations software (e.g. Nessus Manager, "
+    "Trend Micro, Grafana, Burp Suite, Tenable Security Center, ServiceNow). "
+    "Be concise, factual, and action-oriented. "
     "NEVER invent CVE IDs, CVSS scores, or exploitation data that is not in "
-    "the context. Use the exact numbers you are given. Format answers in "
+    "the context. Use the exact numbers you are given. Name the specific service "
+    "and CVE IDs in every recommendation — never say 'EC2 AMI' or generic cloud "
+    "references unless they are explicitly in the data. Format answers in "
     "markdown with short bullet lists. Prefer 4-8 bullets over long paragraphs. "
     "If the data is sparse, say so. You advise humans; you never execute or "
     "promote anything."
@@ -173,8 +177,8 @@ def _briefing_prompt(ctx: Dict[str, object]) -> str:
     """
     return (
         "Analyze this patch event. Use ONLY these facts.\n\n"
-        f"Service: {ctx['service']} ({ctx['environment']}) AMI {ctx['ami_id']}\n"
-        f"Diff: {ctx['counts']['before']} -> {ctx['counts']['after']} vulns "
+        f"Service: {ctx['service']} ({ctx['environment']}) — scan ID: {ctx['ami_id']}\n"
+        f"Diff: {ctx['counts']['before']} → {ctx['counts']['after']} vulns "
         f"({ctx['counts']['fixed']} fixed, {ctx['effectiveness_pct']}% effective)\n"
         f"Severity after: {ctx['severity_after']}\n"
         f"CISA KEV (actively exploited) before/after: "
@@ -184,10 +188,10 @@ def _briefing_prompt(ctx: Dict[str, object]) -> str:
         + "Top fixed CVEs:\n"
         + _format_cve_list(ctx["top_fixed"])  # type: ignore[arg-type]
         + "\nWrite a short briefing in markdown, in this order:\n"
-        "**Summary**: 2 sentences.\n"
-        "**Fixed**: 3 bullets, note any KEV.\n"
-        "**Still matters**: 3 bullets, focus on KEV and high EPSS.\n"
-        "**Next action**: 1 sentence.\n"
+        f"**Summary**: 2 sentences about {ctx['service']} specifically.\n"
+        "**Fixed**: 3 bullets citing CVE IDs, note any KEV.\n"
+        "**Still matters**: 3 bullets citing CVE IDs, focus on KEV and high EPSS.\n"
+        f"**Next action**: 1 sentence naming {ctx['service']} and the specific CVE or risk to address.\n"
         "**Verdict:** one of LOW / MEDIUM / HIGH / CRITICAL.\n"
     )
 
@@ -331,7 +335,11 @@ def _fleet_briefing_prompt(fleet) -> str:
     when they first load the dashboard.
     """
     lines: List[str] = []
-    lines.append("Fleet vulnerability posture across all patch events.")
+    lines.append(
+        "Fleet vulnerability posture for enterprise security tools "
+        "(Nessus Manager, Trend Micro, Grafana, Burp Suite, "
+        "Tenable Security Center, ServiceNow MID Server)."
+    )
     lines.append("")
     lines.append(f"Events: {fleet.total_patch_events} total, "
                  f"{fleet.events_with_evidence} with evidence.")
@@ -345,6 +353,18 @@ def _fleet_briefing_prompt(fleet) -> str:
     lines.append(f"Critical CVSS (>= 9.0): {fleet.critical_cvss_count}")
     lines.append(f"Severity remaining: {fleet.severity_remaining}")
     lines.append("")
+
+    # Service-level breakdown so the LLM can name specific tools
+    if fleet.top_services_by_risk:
+        lines.append("Risk by service (name | remaining CVEs | risk score | CISA KEV count):")
+        for svc in fleet.top_services_by_risk[:8]:
+            kev_note = f" | {svc['kev']} KEV" if svc.get("kev") else ""
+            lines.append(
+                f"  - {svc['service']}: {svc['remaining']} remaining "
+                f"| risk {svc['risk']:.0f}{kev_note}"
+            )
+        lines.append("")
+
     lines.append("Top remaining CVEs (ranked by risk):")
     top = fleet.top_exploited or fleet.top_critical_remaining
     for c in top[:6]:
@@ -354,20 +374,24 @@ def _fleet_briefing_prompt(fleet) -> str:
         if c.epss is not None:
             extras.append(f"EPSS {c.epss * 100:.0f}%")
         if c.is_kev:
-            extras.append("KEV")
+            extras.append("CISA KEV — actively exploited")
         head = " ".join(extras)
         desc = (c.description or "").strip()
-        line = f"- {c.cve} ({c.severity}) {head} on {c.host_count} host(s)"
+        line = f"- {c.cve} ({c.severity}) {head}"
         if desc:
             line += f": {desc[:100]}"
         lines.append(line)
     lines.append("")
     lines.append(
         "Write a short fleet briefing in markdown. Use THESE sections, in order:\n"
-        "**State of the fleet**: 2 sentences.\n"
-        "**What matters most right now**: 3 bullets on the highest-risk CVEs.\n"
-        "**Recommended next actions**: 3 bullets, each starts with a verb.\n"
+        "**State of the fleet**: 2 sentences naming the specific services scanned "
+        "and their overall CVE exposure.\n"
+        "**What matters most right now**: 3 bullets each citing a specific CVE ID, "
+        "the affected service, and its CVSS/EPSS score.\n"
+        "**Recommended next actions**: 3 bullets each starting with a verb and "
+        "naming the specific service or CVE to act on.\n"
         "**Posture verdict:** one of EXCELLENT / GOOD / ELEVATED / CRITICAL.\n"
+        "Never say 'EC2 AMI'. Always refer to the service by name.\n"
     )
     return "\n".join(lines)
 

@@ -1,6 +1,9 @@
+import logging
 from datetime import date
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -242,9 +245,9 @@ def dashboard(
     fleet = compute_fleet_intel(db)
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "services": services,
             "patch_events": patch_events,
             "selected_service_id": service_id_int,
@@ -277,9 +280,9 @@ def new_patch_event(
     services = db.query(Service).order_by(Service.name).all()
 
     return templates.TemplateResponse(
+        request,
         "patch_event_detail.html",
         {
-            "request": request,
             "patch_event": None,
             "services": services,
             "environment_options": [env.value for env in Environment],
@@ -531,9 +534,9 @@ def get_patch_event_detail(
     ]
 
     return templates.TemplateResponse(
+        request,
         "patch_event_detail.html",
         {
-            "request": request,
             "patch_event": patch_event,
             "services": services,
             "environment_options": [env.value for env in Environment],
@@ -928,9 +931,9 @@ def vulnerability_analysis(
     )
 
     return templates.TemplateResponse(
+        request,
         "vulnerability_analysis.html",
         {
-            "request": request,
             "patch_event": patch_event,
             # Counts
             "before_count": before_count,
@@ -1059,9 +1062,9 @@ def get_ai_briefing(
     try:
         briefing = generate_patch_briefing(db, patch_event, force=refresh)
         return templates.TemplateResponse(
+            request,
             "_ai_briefing_partial.html",
             {
-                "request": request,
                 "briefing": briefing,
                 "patch_event": patch_event,
             },
@@ -1113,9 +1116,9 @@ def post_ai_chat(
         answer = f"_AI unavailable: {exc}_"
 
     return templates.TemplateResponse(
+        request,
         "_ai_chat_message.html",
         {
-            "request": request,
             "role": "assistant",
             "content": answer,
         },
@@ -1143,9 +1146,9 @@ def get_ai_action_plan(
 
     plan = build_action_plan(db, patch_event, include_narrative=narrative)
     return templates.TemplateResponse(
+        request,
         "_ai_action_plan_partial.html",
         {
-            "request": request,
             "patch_event": patch_event,
             "plan": plan,
         },
@@ -1177,18 +1180,18 @@ def get_ai_action_preview(
         preview = build_action_preview(db, patch_event, action_code)
     except ActionExecutionError as exc:
         return templates.TemplateResponse(
+            request,
             "_ai_action_error.html",
             {
-                "request": request,
                 "patch_event": patch_event,
                 "error_message": str(exc),
             },
         )
 
     return templates.TemplateResponse(
+        request,
         "_ai_action_preview.html",
         {
-            "request": request,
             "patch_event": patch_event,
             "preview": preview,
         },
@@ -1220,9 +1223,9 @@ def approve_ai_action(
         result = execute_action(db, patch_event, action_code)
     except ActionExecutionError as exc:
         return templates.TemplateResponse(
+            request,
             "_ai_action_error.html",
             {
-                "request": request,
                 "patch_event": patch_event,
                 "error_message": str(exc),
             },
@@ -1239,9 +1242,9 @@ def approve_ai_action(
     )
 
     return templates.TemplateResponse(
+        request,
         "_ai_action_result.html",
         {
-            "request": request,
             "patch_event": patch_event,
             "result": payload,
         },
@@ -1300,3 +1303,18 @@ def get_ai_fleet_briefing(
 </div>
 '''.strip()
     )
+
+
+@router.post("/auto-scan-services", response_class=HTMLResponse)
+def auto_scan_services(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Trigger an NVD keyword scan for all registered services.
+
+    Creates one BEFORE-snapshot patch event per service using real CVE data
+    pulled from NVD. Existing events are kept; new events are added alongside.
+    Redirects to the dashboard when complete.
+    """
+    from app.services.nvd_cpe_scan import run_auto_scan
+
+    created = run_auto_scan(db, force=True)
+    logger.info("Manual auto-scan complete: %d event(s) created", created)
+    return RedirectResponse(url="/", status_code=303)

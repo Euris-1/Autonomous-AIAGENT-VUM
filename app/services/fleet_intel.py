@@ -168,19 +168,39 @@ def compute_fleet_intel(db: Session) -> FleetIntel:
         1 for e in patch_events if e.dev_evidence_available
     )
 
-    # Gather vulns
+    # Gather vulns per-event so we can correctly handle events that only have
+    # a BEFORE snapshot (unpatched): those vulns are REMAINING, not fixed.
     all_before: List[Vulnerability] = []
-    all_after: List[Vulnerability] = []
+    all_remaining: List[Vulnerability] = []  # AFTER vulns OR BEFORE-only vulns
+    all_fixed: List[Vulnerability] = []
+
     for event in patch_events:
+        before_vulns: List[Vulnerability] = []
+        after_vulns: List[Vulnerability] = []
+        has_after = False
         for snap in event.snapshots:
             if snap.snapshot_type == SnapshotType.BEFORE:
-                all_before.extend(snap.vulnerabilities)
+                before_vulns.extend(snap.vulnerabilities)
             elif snap.snapshot_type == SnapshotType.AFTER:
-                all_after.extend(snap.vulnerabilities)
+                after_vulns.extend(snap.vulnerabilities)
+                has_after = True
+
+        all_before.extend(before_vulns)
+
+        if has_after:
+            # Patched event: remaining = AFTER, fixed = BEFORE not in AFTER
+            all_remaining.extend(after_vulns)
+            after_keys_event = {(v.cve, v.host) for v in after_vulns}
+            for v in before_vulns:
+                if (v.cve, v.host) not in after_keys_event:
+                    all_fixed.append(v)
+        else:
+            # Unpatched event (BEFORE snapshot only): everything is still remaining
+            all_remaining.extend(before_vulns)
 
     intel.total_vulnerabilities = len(all_before)
-    intel.total_remaining = len(all_after)
-    intel.total_fixed = max(len(all_before) - len(all_after), 0)
+    intel.total_remaining = len(all_remaining)
+    intel.total_fixed = len(all_fixed)
     intel.overall_effectiveness_pct = (
         round(intel.total_fixed / len(all_before) * 100, 1)
         if all_before
@@ -189,25 +209,22 @@ def compute_fleet_intel(db: Session) -> FleetIntel:
 
     # Severity dicts
     sev_remaining: Dict[Severity, int] = {s: 0 for s in Severity}
-    for v in all_after:
+    for v in all_remaining:
         sev_remaining[v.severity] = sev_remaining.get(v.severity, 0) + 1
     sev_fixed: Dict[Severity, int] = {s: 0 for s in Severity}
-    # "fixed" = in BEFORE set but not in AFTER set, keyed by (cve, host)
-    after_keys = {(v.cve, v.host) for v in all_after}
-    for v in all_before:
-        if (v.cve, v.host) not in after_keys:
-            sev_fixed[v.severity] = sev_fixed.get(v.severity, 0) + 1
+    for v in all_fixed:
+        sev_fixed[v.severity] = sev_fixed.get(v.severity, 0) + 1
     intel.severity_remaining = _sev_dict(sev_remaining)
     intel.severity_fixed = _sev_dict(sev_fixed)
 
     # Group remaining vulns by CVE for ranking
     remaining_by_cve: Dict[str, List[Vulnerability]] = {}
     fixed_by_cve: Dict[str, List[Vulnerability]] = {}
-    for v in all_after:
+    for v in all_remaining:
         if v.cve:
             remaining_by_cve.setdefault(v.cve, []).append(v)
-    for v in all_before:
-        if v.cve and (v.cve, v.host) not in after_keys:
+    for v in all_fixed:
+        if v.cve:
             fixed_by_cve.setdefault(v.cve, []).append(v)
 
     unique_cves = set(remaining_by_cve) | set(fixed_by_cve)
@@ -355,8 +372,7 @@ def compute_fleet_intel(db: Session) -> FleetIntel:
     }
 
     # ---- Top services by aggregate remaining risk ----
-    # Walk patch events again so we can credit each remaining vuln to a
-    # service. Aggregate by service name.
+    # Per-event: remaining = AFTER vulns if patched, else BEFORE vulns.
     service_risk: Dict[str, Dict[str, object]] = {}
     for event in patch_events:
         svc_name = event.service.name if event.service else "(unknown)"
@@ -371,17 +387,24 @@ def compute_fleet_intel(db: Session) -> FleetIntel:
             },
         )
         slot["events"] = int(slot["events"]) + 1
+        before_v: List[Vulnerability] = []
+        after_v: List[Vulnerability] = []
+        has_after_snap = False
         for snap in event.snapshots:
-            if snap.snapshot_type != SnapshotType.AFTER:
+            if snap.snapshot_type == SnapshotType.BEFORE:
+                before_v.extend(snap.vulnerabilities)
+            elif snap.snapshot_type == SnapshotType.AFTER:
+                after_v.extend(snap.vulnerabilities)
+                has_after_snap = True
+        remaining_for_event = after_v if has_after_snap else before_v
+        for v in remaining_for_event:
+            slot["remaining"] = int(slot["remaining"]) + 1
+            if not v.cve:
                 continue
-            for v in snap.vulnerabilities:
-                slot["remaining"] = int(slot["remaining"]) + 1
-                if not v.cve:
-                    continue
-                r = intel_map.get(v.cve)
-                slot["risk"] = float(slot["risk"]) + float(compute_risk_score(r))
-                if r and r.is_kev:
-                    slot["kev"] = int(slot["kev"]) + 1
+            r = intel_map.get(v.cve)
+            slot["risk"] = float(slot["risk"]) + float(compute_risk_score(r))
+            if r and r.is_kev:
+                slot["kev"] = int(slot["kev"]) + 1
     intel.top_services_by_risk = sorted(
         (
             {
