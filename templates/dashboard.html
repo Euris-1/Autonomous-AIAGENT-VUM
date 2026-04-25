@@ -1,888 +1,1794 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - AMI Patch Evidence Tracker{% endblock %}
+{% block title %}Vulnerability Intelligence Hub{% endblock %}
 
 {% block content %}
-<!-- Tippy.js for tooltips -->
+<!-- Shared JS libs -->
 <script src="https://unpkg.com/@popperjs/core@2"></script>
 <script src="https://unpkg.com/tippy.js@6"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <style>
-  /* Animated Background */
+  /* ------------------------------------------------------------------ */
+  /*  Ambient background — animated gradient + orbs + subtle grid       */
+  /* ------------------------------------------------------------------ */
   .animated-bg {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    overflow: hidden;
-    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+    position: fixed; inset: 0; z-index: -1; overflow: hidden;
+    background: linear-gradient(135deg, #0a0f1e 0%, #131a2f 50%, #0c1220 100%);
   }
-  
   .animated-bg::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: 
-      radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 40%);
-    animation: bgPulse 15s ease-in-out infinite;
+    content: ''; position: absolute; inset: -50%;
+    background:
+      radial-gradient(circle at 20% 80%, rgba(99,102,241,.18) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(139,92,246,.18) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, rgba(59,130,246,.10) 0%, transparent 40%);
+    animation: bgPulse 18s ease-in-out infinite;
   }
-  
   @keyframes bgPulse {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(2%, 2%) scale(1.02); }
-    66% { transform: translate(-1%, 1%) scale(0.98); }
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(1%,2%) scale(1.03); }
   }
-
-  /* Floating orbs */
-  .orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(60px);
-    opacity: 0.4;
-    animation: orbFloat 20s ease-in-out infinite;
-  }
-  .orb-1 { width: 400px; height: 400px; background: #6366f1; top: 10%; left: 10%; animation-delay: 0s; }
-  .orb-2 { width: 300px; height: 300px; background: #8b5cf6; top: 60%; right: 10%; animation-delay: -5s; }
-  .orb-3 { width: 250px; height: 250px; background: #3b82f6; bottom: 10%; left: 30%; animation-delay: -10s; }
-  
+  .orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .35;
+         animation: orbFloat 24s ease-in-out infinite; }
+  .orb-1 { width: 420px; height: 420px; background: #6366f1; top: 6%; left: 4%; }
+  .orb-2 { width: 340px; height: 340px; background: #8b5cf6; top: 55%; right: 6%; animation-delay: -6s; }
+  .orb-3 { width: 260px; height: 260px; background: #3b82f6; bottom: 8%; left: 34%; animation-delay: -12s; }
   @keyframes orbFloat {
-    0%, 100% { transform: translate(0, 0); }
-    25% { transform: translate(30px, -30px); }
-    50% { transform: translate(-20px, 20px); }
-    75% { transform: translate(20px, 30px); }
+    0%,100% { transform: translate(0,0); }
+    33% { transform: translate(40px,-30px); }
+    66% { transform: translate(-20px,30px); }
   }
-
-  /* Grid pattern overlay */
   .grid-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: 
-      linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-    background-size: 50px 50px;
-    animation: gridMove 20s linear infinite;
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(99,102,241,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,102,241,.04) 1px, transparent 1px);
+    background-size: 60px 60px; animation: gridMove 24s linear infinite;
   }
-  
-  @keyframes gridMove {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(50px, 50px); }
-  }
+  @keyframes gridMove { to { transform: translate(60px,60px); } }
 
-  /* Glass card effect */
+  /* ------------------------------------------------------------------ */
+  /*  Glass cards + common utilities                                    */
+  /* ------------------------------------------------------------------ */
   .glass-card {
-    background: rgba(30, 30, 45, 0.7);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    border-radius: 16px;
-    box-shadow: 
-      0 8px 32px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition: all 0.3s ease;
+    background: rgba(17, 24, 39, 0.62);
+    border: 1px solid rgba(99, 102, 241, 0.22);
+    backdrop-filter: blur(14px);
+    border-radius: 18px;
+    box-shadow: 0 8px 40px -6px rgba(0,0,0,.5);
   }
-  .glass-card:hover {
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow: 
-      0 12px 40px rgba(99, 102, 241, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transform: translateY(-2px);
+  .glass-card-strong {
+    background: linear-gradient(135deg, rgba(30,27,75,.72), rgba(17,24,39,.78));
+    border: 1px solid rgba(139,92,246,.35);
+    backdrop-filter: blur(18px);
+    border-radius: 22px;
+    box-shadow: 0 10px 60px -10px rgba(99,102,241,.3);
   }
-
-  /* Stat card 3D effect */
-  .stat-card-3d {
-    background: linear-gradient(145deg, rgba(30, 30, 45, 0.9), rgba(20, 20, 35, 0.9));
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    border-radius: 16px;
-    padding: 1.5rem;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  .section-title {
+    font-size: .72rem; font-weight: 700; letter-spacing: .18em;
+    text-transform: uppercase; color: #a5b4fc;
   }
-  .stat-card-3d::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-  .stat-card-3d:hover::before { opacity: 1; }
-  .stat-card-3d:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 20px 40px rgba(99, 102, 241, 0.3);
-  }
-
-  /* Counter animation */
-  .counter-value {
-    font-size: 2.5rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #6366f1, #a855f7);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Search input */
-  .search-glow {
-    background: rgba(20, 20, 35, 0.8);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    border-radius: 12px;
-    transition: all 0.3s ease;
-  }
-  .search-glow:focus {
-    border-color: #6366f1;
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
-    outline: none;
-  }
-
-  /* Table enhancements */
-  .enhanced-table {
-    border-collapse: separate;
-    border-spacing: 0 8px;
-  }
-  .enhanced-table thead th {
-    background: transparent;
-    padding: 12px 16px;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #94a3b8;
-    cursor: pointer;
-    transition: color 0.2s ease;
-    user-select: none;
-  }
-  .enhanced-table thead th:hover { color: #6366f1; }
-  .enhanced-table thead th.sorted-asc::after { content: ' ↑'; color: #22c55e; }
-  .enhanced-table thead th.sorted-desc::after { content: ' ↓'; color: #ef4444; }
-  
-  .enhanced-table tbody tr {
-    background: rgba(30, 30, 45, 0.5);
-    border-radius: 12px;
-    transition: all 0.3s ease;
-  }
-  .enhanced-table tbody tr:hover {
-    background: rgba(99, 102, 241, 0.15);
-    transform: scale(1.01);
-    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.2);
-  }
-  .enhanced-table tbody td {
-    padding: 16px;
-    border: none;
-  }
-  .enhanced-table tbody td:first-child { border-radius: 12px 0 0 12px; }
-  .enhanced-table tbody td:last-child { border-radius: 0 12px 12px 0; }
-
-  /* State badges */
-  .state-badge {
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .state-dev { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-  .state-stage { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
-  .state-prod { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
-  .state-closed { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
-
-  /* Action buttons */
-  .action-btn {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .action-btn-primary {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border: none;
-  }
-  .action-btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-  }
-  .action-btn-secondary {
-    background: rgba(99, 102, 241, 0.1);
-    color: #a5b4fc;
-    border: 1px solid rgba(99, 102, 241, 0.3);
-  }
-  .action-btn-secondary:hover {
-    background: rgba(99, 102, 241, 0.2);
-    border-color: rgba(99, 102, 241, 0.5);
-  }
-
-  /* Toast notification */
-  .toast-notification {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    padding: 12px 24px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);
-    transform: translateY(100px);
-    opacity: 0;
-    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    z-index: 1000;
-  }
-  .toast-notification.show {
-    transform: translateY(0);
-    opacity: 1;
-  }
-
-  /* Pagination */
-  .pagination-btn {
-    padding: 8px 14px;
-    border-radius: 8px;
-    background: rgba(30, 30, 45, 0.8);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    color: #94a3b8;
-    font-size: 0.8rem;
-    transition: all 0.2s ease;
-    cursor: pointer;
-  }
-  .pagination-btn:hover:not(:disabled) {
-    background: rgba(99, 102, 241, 0.2);
-    border-color: rgba(99, 102, 241, 0.4);
-    color: white;
-  }
-  .pagination-btn.active {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    border-color: transparent;
-    color: white;
-  }
-  .pagination-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* Filter chips */
-  .filter-chip {
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    background: rgba(99, 102, 241, 0.1);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    color: #a5b4fc;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .filter-chip:hover, .filter-chip.active {
-    background: rgba(99, 102, 241, 0.3);
-    border-color: #6366f1;
-  }
-
-  /* Keyboard shortcut hint */
   .kbd-hint {
-    padding: 2px 6px;
-    background: rgba(30, 30, 45, 0.9);
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    display: inline-block; padding: 1px 6px; font-family: monospace; font-size: .7rem;
+    background: rgba(99,102,241,.2); border: 1px solid rgba(99,102,241,.4);
     border-radius: 4px;
-    font-size: 0.65rem;
-    color: #94a3b8;
-    font-family: monospace;
   }
 
-  /* Empty state */
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
+  /* ------------------------------------------------------------------ */
+  /*  KPI cards                                                         */
+  /* ------------------------------------------------------------------ */
+  .kpi {
+    position: relative; padding: 18px; border-radius: 14px;
+    background: rgba(15,23,42,.75);
+    border: 1px solid rgba(99,102,241,.25);
+    transition: transform .2s, border-color .2s;
+    overflow: hidden;
   }
-  .empty-state-icon {
-    width: 80px;
-    height: 80px;
-    margin: 0 auto 20px;
-    background: rgba(99, 102, 241, 0.1);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
+  .kpi:hover { transform: translateY(-3px); border-color: rgba(139,92,246,.6); }
+  .kpi::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 60%, rgba(99,102,241,.08));
+    pointer-events: none;
+  }
+  .kpi-value { font-size: 2rem; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+  .kpi-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .14em;
+               color: #94a3b8; margin-top: 6px; }
+  .kpi-sublabel { font-size: .72rem; color: #64748b; margin-top: 3px; }
+  .kpi-red   { border-color: rgba(239,68,68,.4); }
+  .kpi-red .kpi-value { color: #fca5a5; }
+  .kpi-orange { border-color: rgba(251,146,60,.4); }
+  .kpi-orange .kpi-value { color: #fdba74; }
+  .kpi-yellow { border-color: rgba(234,179,8,.4); }
+  .kpi-yellow .kpi-value { color: #fde047; }
+  .kpi-green { border-color: rgba(34,197,94,.4); }
+  .kpi-green .kpi-value { color: #86efac; }
+  .kpi-indigo { border-color: rgba(99,102,241,.4); }
+  .kpi-indigo .kpi-value { color: #a5b4fc; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Clickable KPIs + drill-down panel                                 */
+  /* ------------------------------------------------------------------ */
+  .kpi-clickable {
+    cursor: pointer; text-align: left; font-family: inherit; color: inherit;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .kpi-clickable:hover {
+    transform: translateY(-3px);
+    border-color: rgba(139,92,246,.7);
+    box-shadow: 0 14px 30px -16px rgba(139,92,246,.6);
+  }
+  .kpi-clickable:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+  .kpi-clickable.active {
+    border-color: rgba(139,92,246,.85);
+    box-shadow: 0 0 0 2px rgba(139,92,246,.35),
+                0 14px 30px -12px rgba(139,92,246,.7);
+  }
+  .kpi-hint {
+    position: absolute; bottom: 10px; right: 14px;
+    font-size: .58rem; text-transform: uppercase; letter-spacing: .12em;
+    color: rgba(148,163,184,.55); transition: color .18s;
+  }
+  .kpi-clickable:hover .kpi-hint { color: #c4b5fd; }
+
+  .kpi-drilldown {
+    background: linear-gradient(160deg, rgba(30,30,50,.92), rgba(20,20,40,.96));
+    border: 1px solid rgba(139,92,246,.45);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 18px 40px -22px rgba(139,92,246,.55),
+                0 0 0 1px rgba(139,92,246,.2);
+    animation: drillFade .35s ease-out;
+  }
+  .kpi-drilldown.hidden { display: none; }
+  @keyframes drillFade {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .kpi-drilldown ul.cve-mini { list-style: none; padding: 0; margin: 0; }
+  .kpi-drilldown ul.cve-mini li {
+    padding: 8px 10px; border-radius: 8px;
+    background: rgba(15,23,42,.6);
+    border: 1px solid rgba(99,102,241,.18);
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px; font-size: .75rem;
+  }
+  .kpi-drilldown ul.cve-mini li:hover {
+    background: rgba(99,102,241,.1);
+    border-color: rgba(139,92,246,.4);
+  }
+  .kpi-drilldown ul.cve-mini a {
+    font-family: ui-monospace, monospace; color: #a5b4fc; font-weight: 600;
+  }
+  .kpi-drilldown ul.cve-mini a:hover { color: #e0e7ff; text-decoration: underline; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Chart-type toggle pills (used on severity + analytics charts)     */
+  /* ------------------------------------------------------------------ */
+  .chart-toggle {
+    display: inline-flex; gap: 4px; padding: 3px;
+    background: rgba(15,23,42,.7);
+    border: 1px solid rgba(99,102,241,.25);
+    border-radius: 9999px;
+  }
+  .chart-toggle button {
+    padding: 4px 10px; font-size: .65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em;
+    border-radius: 9999px; color: #94a3b8;
+    background: transparent; border: none; cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+  .chart-toggle button:hover { color: #cbd5e1; }
+  .chart-toggle button.active {
+    color: #fff;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 4px 14px -4px rgba(139,92,246,.6);
+  }
+  /* Compact variant for the analytics card headers. */
+  .chart-toggle-sm { padding: 2px; }
+  .chart-toggle-sm button {
+    padding: 2px 6px; font-size: .55rem; letter-spacing: .08em;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Severity + KEV badges                                             */
+  /* ------------------------------------------------------------------ */
+  .sev-badge {
+    display: inline-flex; align-items: center; padding: 2px 10px;
+    border-radius: 9999px; font-size: .68rem; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase; min-width: 64px;
     justify-content: center;
   }
+  .sev-critical { background: rgba(239,68,68,.2); color: #fca5a5; border: 1px solid rgba(239,68,68,.4); }
+  .sev-high     { background: rgba(251,146,60,.2); color: #fdba74; border: 1px solid rgba(251,146,60,.4); }
+  .sev-medium   { background: rgba(234,179,8,.2); color: #fde047; border: 1px solid rgba(234,179,8,.4); }
+  .sev-low      { background: rgba(34,197,94,.2); color: #86efac; border: 1px solid rgba(34,197,94,.4); }
 
-  /* View mode toggle */
-  .view-toggle {
-    display: flex;
-    background: rgba(30, 30, 45, 0.8);
-    border-radius: 10px;
-    padding: 4px;
-    border: 1px solid rgba(99, 102, 241, 0.2);
+  .kev-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px; border-radius: 4px; font-size: .65rem; font-weight: 700;
+    background: #7f1d1d; color: #fecaca; border: 1px solid #b91c1c;
+    animation: kevPulse 2.4s ease-in-out infinite;
   }
-  .view-toggle button {
-    padding: 8px 16px;
-    border-radius: 8px;
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .view-toggle button.active {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
+  @keyframes kevPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.4); }
+    50%     { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
   }
 
-  /* Card view */
+  .epss-bar {
+    height: 5px; background: rgba(51,65,85,.6); border-radius: 3px; overflow: hidden;
+    width: 80px; display: inline-block; vertical-align: middle;
+  }
+  .epss-bar-fill {
+    height: 100%; background: linear-gradient(90deg, #60a5fa 0%, #ef4444 100%);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Tables                                                            */
+  /* ------------------------------------------------------------------ */
+  .cve-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .cve-table th {
+    text-align: left; padding: 10px 12px; font-size: .65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .08em; color: #94a3b8;
+    border-bottom: 1px solid rgba(99,102,241,.2);
+  }
+  .cve-table td {
+    padding: 10px 12px; border-bottom: 1px solid rgba(30,41,59,.6);
+    vertical-align: middle;
+  }
+  .cve-table tbody tr { transition: background .2s; }
+  .cve-table tbody tr:hover { background: rgba(99,102,241,.05); }
+  .cve-table a { color: #a5b4fc; }
+  .cve-table a:hover { color: #c7d2fe; text-decoration: underline; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Accordion for patch events                                        */
+  /* ------------------------------------------------------------------ */
+  .accordion-head {
+    cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+    user-select: none;
+  }
+  .chev { transition: transform .25s; }
+  .chev.open { transform: rotate(180deg); }
+  .collapsible { max-height: 0; overflow: hidden; transition: max-height .35s ease; }
+  .collapsible.open { max-height: 4000px; }
+
+  /* Individual patch-event mini card */
   .event-card {
-    background: rgba(30, 30, 45, 0.7);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    border-radius: 16px;
-    padding: 20px;
-    transition: all 0.3s ease;
+    padding: 14px 16px; border-radius: 12px;
+    background: rgba(15,23,42,.55); border: 1px solid rgba(51,65,85,.7);
+    transition: border-color .2s, transform .2s;
+    text-decoration: none; color: inherit;
   }
   .event-card:hover {
-    border-color: rgba(99, 102, 241, 0.5);
-    transform: translateY(-4px);
-    box-shadow: 0 12px 30px rgba(99, 102, 241, 0.2);
+    border-color: rgba(139,92,246,.55); transform: translateY(-2px);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  AI Fleet briefing                                                 */
+  /* ------------------------------------------------------------------ */
+  .ai-hero {
+    background:
+      radial-gradient(ellipse at top left, rgba(99,102,241,.22), transparent 55%),
+      radial-gradient(ellipse at bottom right, rgba(139,92,246,.20), transparent 55%),
+      rgba(15,23,42,.8);
+    border: 1px solid rgba(139,92,246,.35);
+    border-radius: 22px;
+    padding: 24px;
+  }
+  .ai-hero-content h1, .ai-hero-content h2, .ai-hero-content h3 {
+    color: #e0e7ff; font-weight: 700;
+  }
+  .ai-hero-content h2 { font-size: 1.05rem; margin-top: 12px; }
+  .ai-hero-content p { color: #cbd5e1; margin: 6px 0; }
+  .ai-hero-content ul { margin: 6px 0; padding-left: 20px; list-style: disc; color: #cbd5e1; }
+  .ai-hero-content strong { color: #fef3c7; }
+
+  .spinner { width: 22px; height: 22px;
+    border: 3px solid rgba(139,92,246,.25); border-top-color: #a78bfa;
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ------------------------------------------------------------------ */
+  /*  Filter chips                                                      */
+  /* ------------------------------------------------------------------ */
+  .filter-chip {
+    font-size: .75rem; padding: 6px 12px; border-radius: 999px;
+    background: rgba(30,41,59,.7); border: 1px solid rgba(99,102,241,.25);
+    color: #cbd5e1; cursor: pointer; transition: all .15s;
+  }
+  .filter-chip:hover { border-color: rgba(139,92,246,.55); color: #e0e7ff; }
+  .filter-chip.active {
+    background: rgba(99,102,241,.35); border-color: #818cf8; color: #fff;
+  }
+
+  /* Source attribution */
+  .source-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border-radius: 8px; background: rgba(15,23,42,.75);
+    border: 1px solid rgba(99,102,241,.25);
+    font-family: monospace; font-size: .72rem; color: #a5b4fc;
+  }
+  .source-chip .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
   }
 </style>
 
-<!-- Animated Background -->
+<!-- Animated background elements -->
 <div class="animated-bg">
+  <div class="grid-overlay"></div>
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
   <div class="orb orb-3"></div>
-  <div class="grid-overlay"></div>
 </div>
 
-<!-- Toast Notification -->
-<div id="toast" class="toast-notification">
-  <span id="toastMessage">Action completed!</span>
-</div>
+<div class="relative z-10 max-w-7xl mx-auto p-6 space-y-6">
 
-<!-- Header -->
-<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-  <div>
-    <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
-      Patch Events Dashboard
-    </h1>
-    <p class="text-slate-400 text-sm mt-1">
-      Monitor and manage AMI patch events across all environments
-      <span class="kbd-hint ml-2">? shortcuts</span>
-    </p>
+  <!-- =============================================================
+       TOP BANNER: trust / disclaimer
+       ============================================================= -->
+  <div class="text-center text-xs text-slate-400 bg-slate-900/60 border border-slate-700/50 rounded-lg py-2">
+    This application uses <strong class="text-indigo-300">synthetic scan data</strong>
+    enriched with <strong class="text-emerald-300">real, public CVE intelligence</strong>
+    from NVD, EPSS, and CISA KEV. 100% local — no outbound calls to AI vendors.
   </div>
-  <a href="/patch-events/new" class="action-btn action-btn-primary text-base px-6 py-3">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-    </svg>
-    Create Patch Event
-  </a>
-</div>
 
-<!-- Stats Cards -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-  <div class="stat-card-3d">
-    <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Total Events</div>
-    <div class="counter-value" data-target="{{ total_events }}">0</div>
-    <div class="text-xs text-slate-500 mt-1">All services</div>
-  </div>
-  <div class="stat-card-3d">
-    <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">DEV Phase</div>
-    <div class="counter-value text-blue-400" data-target="{{ dev_phase_events }}" style="background: linear-gradient(135deg, #3b82f6, #60a5fa); -webkit-background-clip: text;">0</div>
-    <div class="text-xs text-slate-500 mt-1">In development</div>
-  </div>
-  <div class="stat-card-3d">
-    <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">STAGE/PROD</div>
-    <div class="counter-value" data-target="{{ stage_phase_events + prod_phase_events }}" style="background: linear-gradient(135deg, #f59e0b, #22c55e); -webkit-background-clip: text;">0</div>
-    <div class="text-xs text-slate-500 mt-1">In progress</div>
-  </div>
-  <div class="stat-card-3d">
-    <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Closed</div>
-    <div class="counter-value" data-target="{{ closed_events }}" style="background: linear-gradient(135deg, #22c55e, #10b981); -webkit-background-clip: text;">0</div>
-    <div class="text-xs text-slate-500 mt-1">Completed</div>
-  </div>
-</div>
+  <!-- =============================================================
+       HERO: title + AI Fleet Briefing
+       ============================================================= -->
+  <div class="glass-card-strong ai-hero">
+    <div class="flex items-start justify-between gap-6 flex-wrap">
+      <div class="flex-1 min-w-[300px]">
+        <div class="flex items-center gap-3 mb-2">
+          <span class="text-4xl">🛡️</span>
+          <div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+              Vulnerability Intelligence Hub
+            </h1>
+            <p class="text-sm text-indigo-300 mt-1">
+              AI-powered patch posture for your fleet — grounded in public CVE data.
+            </p>
+          </div>
+        </div>
 
-<!-- Search and Filters -->
-<div class="glass-card p-6 mb-6">
-  <div class="flex flex-wrap items-center gap-4">
-    <!-- Search -->
-    <div class="relative flex-1 min-w-[250px]">
-      <input 
-        type="text" 
-        id="searchInput" 
-        placeholder="Search by service, AMI ID, or state... (Press /)" 
-        class="search-glow w-full px-4 py-3 pl-12 text-sm"
-        oninput="filterEvents()"
-      />
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <!-- Source attribution -->
+        <div class="flex flex-wrap gap-2 mt-4">
+          <div class="source-chip"><span class="dot"></span>NVD · nvd.nist.gov</div>
+          <div class="source-chip"><span class="dot"></span>FIRST.org EPSS</div>
+          <div class="source-chip"><span class="dot"></span>CISA KEV</div>
+          <div class="source-chip"><span class="dot"></span>Ollama · <span id="aiModelName">llama3.1:8b</span></div>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 items-end">
+        <a href="/patch-events/new"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg
+                  bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400
+                  text-white font-semibold text-sm shadow-lg shadow-indigo-500/20 transition">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Patch Event
+        </a>
+        <span class="text-[11px] text-slate-400">
+          Automatically scans, enriches, and analyzes on creation.
+        </span>
+      </div>
+    </div>
+
+    <!-- AI briefing box (lazy loaded) -->
+    <div class="mt-6 pt-5 border-t border-indigo-500/20">
+      <div class="flex items-center justify-between mb-3">
+        <div class="section-title">🧠 AI Fleet Briefing</div>
+        <button type="button"
+          class="text-[11px] text-indigo-300 hover:text-indigo-100 underline hidden"
+          id="aiRegenBtn"
+          onclick="loadFleetBriefing(true)">regenerate</button>
+      </div>
+      <div id="fleetBriefing"
+           data-total-cves="{{ fleet.total_unique_cves }}"
+           data-kev="{{ fleet.kev_count }}">
+        <!-- filled by JS on load -->
+        <div class="flex items-center gap-3 text-sm text-slate-400">
+          <div class="spinner"></div>
+          <span>Checking local Ollama availability…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================================
+       KPI ROW
+       ============================================================= -->
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" id="kpiGrid">
+    <button type="button" class="kpi kpi-indigo kpi-clickable" data-kpi="cves">
+      <div class="kpi-value">{{ fleet.total_unique_cves }}</div>
+      <div class="kpi-label">Unique CVEs</div>
+      <div class="kpi-sublabel">{{ fleet.enriched_cve_count }} enriched</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+    <button type="button" class="kpi kpi-red kpi-clickable" data-kpi="kev">
+      <div class="kpi-value">{{ fleet.kev_count }}</div>
+      <div class="kpi-label">CISA KEV</div>
+      <div class="kpi-sublabel">Actively exploited</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+    <button type="button" class="kpi kpi-orange kpi-clickable" data-kpi="epss">
+      <div class="kpi-value">{{ fleet.high_epss_count }}</div>
+      <div class="kpi-label">High EPSS</div>
+      <div class="kpi-sublabel">≥ 70% exploit likelihood</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+    <button type="button" class="kpi kpi-yellow kpi-clickable" data-kpi="cvss">
+      <div class="kpi-value">{{ fleet.critical_cvss_count }}</div>
+      <div class="kpi-label">CVSS ≥ 9.0</div>
+      <div class="kpi-sublabel">Critical severity</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+    <button type="button" class="kpi kpi-green kpi-clickable" data-kpi="effectiveness">
+      <div class="kpi-value">{{ fleet.overall_effectiveness_pct }}%</div>
+      <div class="kpi-label">Patch Effectiveness</div>
+      <div class="kpi-sublabel">{{ fleet.total_fixed }} of {{ fleet.total_vulnerabilities }} fixed</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+    <button type="button" class="kpi kpi-clickable" data-kpi="events">
+      <div class="kpi-value">{{ fleet.total_patch_events }}</div>
+      <div class="kpi-label">Patch Events</div>
+      <div class="kpi-sublabel">{{ fleet.events_with_evidence }} with evidence</div>
+      <span class="kpi-hint">click for breakdown ›</span>
+    </button>
+  </div>
+
+  {# ==================================================================
+     KPI drill-down panel — appears right under the grid when any KPI
+     is clicked. JS swaps the title/explanation/chart based on which
+     card you picked. Closes when you click the same KPI again or the
+     close button.
+     ================================================================== #}
+  <div id="kpiDrilldown" class="kpi-drilldown hidden" aria-live="polite">
+    <div class="flex items-start justify-between gap-3 mb-3">
+      <div>
+        <div class="text-[11px] uppercase tracking-[.2em] text-indigo-300 font-bold mb-1"
+             id="kpiDrillEyebrow">drill-down</div>
+        <h3 class="text-xl font-bold text-white" id="kpiDrillTitle">—</h3>
+        <p class="text-xs text-slate-400 mt-1 max-w-2xl" id="kpiDrillExplanation">—</p>
+      </div>
+      <button type="button"
+              class="text-slate-400 hover:text-white text-2xl leading-none"
+              onclick="closeKpiDrilldown()">×</button>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-xl bg-slate-900/60 border border-indigo-500/20 p-4">
+        <div class="relative" style="height: 260px;">
+          <canvas id="kpiDrillChart"></canvas>
+        </div>
+      </div>
+      <div class="rounded-xl bg-slate-900/60 border border-indigo-500/20 p-4
+                  overflow-y-auto" style="max-height: 280px;" id="kpiDrillList">
+        <div class="text-xs text-slate-500">—</div>
+      </div>
+    </div>
+  </div>
+
+  {# JSON payload for the drill-down JS — keeps escaping clean. #}
+  <script id="kpiDrilldownData" type="application/json">
+    {
+      "kev_list": {{ fleet.kev_list | tojson }},
+      "high_epss_list": {{ fleet.high_epss_list | tojson }},
+      "critical_cvss_list": {{ fleet.critical_cvss_list | tojson }},
+      "top_services": {{ fleet.top_services_by_risk | tojson }},
+      "trend": {{ fleet.effectiveness_trend | tojson }},
+      "events_phase": {
+        "DEV":    {{ dev_phase_events }},
+        "STAGE":  {{ stage_phase_events }},
+        "PROD":   {{ prod_phase_events }},
+        "CLOSED": {{ closed_events }}
+      },
+      "totals": {
+        "fixed":     {{ fleet.total_fixed }},
+        "remaining": {{ fleet.total_remaining }},
+        "vulns":     {{ fleet.total_vulnerabilities }},
+        "events":    {{ fleet.total_patch_events }},
+        "evidence":  {{ fleet.events_with_evidence }},
+        "cves":      {{ fleet.total_unique_cves }},
+        "kev":       {{ fleet.kev_count }},
+        "high_epss": {{ fleet.high_epss_count }},
+        "crit_cvss": {{ fleet.critical_cvss_count }},
+        "effectiveness": {{ fleet.overall_effectiveness_pct }}
+      }
+    }
+  </script>
+
+  <!-- =============================================================
+       TOP EXPLOITED + SEVERITY CHART
+       ============================================================= -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <!-- Top exploited CVEs (span 2) -->
+    <div class="glass-card p-5 lg:col-span-2">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <div class="section-title">Top Remaining CVEs by Real-World Risk</div>
+          <p class="text-xs text-slate-500 mt-1">
+            Ranked by composite score: CISA KEV status × EPSS probability × CVSS severity.
+          </p>
+        </div>
+        <span class="text-[11px] text-slate-500">{{ fleet.top_exploited|length }} shown</span>
+      </div>
+      {% if fleet.top_exploited %}
+      <div class="overflow-x-auto">
+        <table class="cve-table">
+          <thead>
+            <tr>
+              <th>CVE</th>
+              <th>Severity</th>
+              <th>CVSS</th>
+              <th>EPSS</th>
+              <th>KEV</th>
+              <th>Hosts</th>
+              <th>Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in fleet.top_exploited %}
+            <tr>
+              <td>
+                <a href="https://nvd.nist.gov/vuln/detail/{{ c.cve }}" target="_blank"
+                   class="font-mono text-xs">{{ c.cve }}</a>
+              </td>
+              <td>
+                <span class="sev-badge sev-{{ c.severity|lower }}">{{ c.severity }}</span>
+              </td>
+              <td class="font-mono text-xs text-slate-200">
+                {% if c.cvss is not none %}{{ "%.1f"|format(c.cvss) }}{% else %}—{% endif %}
+              </td>
+              <td class="text-xs">
+                {% if c.epss is not none %}
+                  <span class="text-slate-300">{{ (c.epss * 100)|round(1) }}%</span>
+                  <span class="epss-bar ml-1"><span class="epss-bar-fill"
+                    style="width: {{ (c.epss * 100)|round }}%;"></span></span>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if c.is_kev %}
+                  <span class="kev-badge">⚠ KEV</span>
+                {% else %}
+                  <span class="text-slate-600 text-xs">—</span>
+                {% endif %}
+              </td>
+              <td class="text-xs text-slate-300">{{ c.host_count }}</td>
+              <td class="text-xs text-slate-400 max-w-md truncate"
+                  title="{{ c.description }}">{{ c.description }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="text-center py-10 text-slate-500 text-sm">
+          No CVEs yet. Create a patch event to see real NVD / EPSS / KEV data here.
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Severity distribution chart (interactive: switchable chart type
+         + Remaining vs Fixed comparison) -->
+    <div class="glass-card p-5" id="sevChartCard">
+      <div class="flex items-center justify-between mb-3 gap-2">
+        <div class="section-title">Severity Distribution</div>
+        <div class="chart-toggle" role="tablist" aria-label="Chart type">
+          <button type="button" class="active" data-sev-type="doughnut">Donut</button>
+          <button type="button" data-sev-type="bar">Bar</button>
+          <button type="button" data-sev-type="radar">Radar</button>
+          <button type="button" data-sev-type="polarArea">Polar</button>
+        </div>
+      </div>
+      <p class="text-[10px] text-slate-500 mb-2">
+        Click a chart type to switch view · hover any segment for live counts.
+      </p>
+      <div class="relative" style="height: 220px;">
+        <canvas id="sevChart"></canvas>
+      </div>
+      <div class="mt-4 space-y-2 text-xs">
+        <div class="flex justify-between text-slate-300">
+          <span>Remaining <span class="text-slate-500">({{ fleet.total_remaining }})</span></span>
+          <span class="text-rose-400">{{ fleet.severity_remaining.CRITICAL }}C</span>
+          <span class="text-orange-400">{{ fleet.severity_remaining.HIGH }}H</span>
+          <span class="text-yellow-400">{{ fleet.severity_remaining.MEDIUM }}M</span>
+          <span class="text-emerald-400">{{ fleet.severity_remaining.LOW }}L</span>
+        </div>
+        <div class="flex justify-between text-slate-300">
+          <span>Fixed <span class="text-slate-500">({{ fleet.total_fixed }})</span></span>
+          <span class="text-rose-400">{{ fleet.severity_fixed.CRITICAL }}C</span>
+          <span class="text-orange-400">{{ fleet.severity_fixed.HIGH }}H</span>
+          <span class="text-yellow-400">{{ fleet.severity_fixed.MEDIUM }}M</span>
+          <span class="text-emerald-400">{{ fleet.severity_fixed.LOW }}L</span>
+        </div>
+      </div>
+
+      {# Severity data fed to the JS so we can hot-swap chart types
+         without going back to the server. #}
+      <script id="sevChartData" type="application/json">
+        {
+          "remaining": {
+            "CRITICAL": {{ fleet.severity_remaining.CRITICAL }},
+            "HIGH":     {{ fleet.severity_remaining.HIGH }},
+            "MEDIUM":   {{ fleet.severity_remaining.MEDIUM }},
+            "LOW":      {{ fleet.severity_remaining.LOW }}
+          },
+          "fixed": {
+            "CRITICAL": {{ fleet.severity_fixed.CRITICAL }},
+            "HIGH":     {{ fleet.severity_fixed.HIGH }},
+            "MEDIUM":   {{ fleet.severity_fixed.MEDIUM }},
+            "LOW":      {{ fleet.severity_fixed.LOW }}
+          }
+        }
+      </script>
+    </div>
+  </div>
+
+  <!-- =============================================================
+       INTELLIGENCE ANALYTICS - advanced charts powered by FleetIntel.
+       Five panels: CVSS distribution, EPSS distribution, KEV split,
+       Top services by risk, and Patch effectiveness trend over time.
+       ============================================================= -->
+  {% if fleet.total_remaining > 0 or fleet.effectiveness_trend %}
+  <div class="glass-card p-5 space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="section-title flex items-center gap-2">
+        <span class="text-base">📈</span> Intelligence Analytics
+      </div>
+      <span class="text-[10px] uppercase tracking-[.18em] text-slate-500">
+        rolled up across {{ fleet.total_patch_events }} patch event(s)
+      </span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {# Each analytics card shares the same shell: a header row with a
+         compact chart-type toggle, the label/subtitle, and a canvas.
+         All charts are rebuildable at runtime via data-analytics-chart=
+         attributes consumed by the JS at the bottom of the file. #}
+
+      <!-- CVSS distribution (interactive) -->
+      <div class="rounded-xl p-4 bg-slate-900/40 border border-indigo-500/20"
+           data-analytics-card="cvss">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+            CVSS · severity bucket
+          </div>
+          <div class="chart-toggle chart-toggle-sm" data-analytics-chart="cvss">
+            <button type="button" class="active" data-type="bar">Bar</button>
+            <button type="button" data-type="line">Line</button>
+            <button type="button" data-type="radar">Radar</button>
+            <button type="button" data-type="polarArea">Polar</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mb-2">Remaining CVEs by base score range.</p>
+        <div class="relative" style="height: 170px;"><canvas id="cvssHistChart"></canvas></div>
+      </div>
+
+      <!-- EPSS distribution (interactive) -->
+      <div class="rounded-xl p-4 bg-slate-900/40 border border-indigo-500/20"
+           data-analytics-card="epss">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+            EPSS · exploit likelihood
+          </div>
+          <div class="chart-toggle chart-toggle-sm" data-analytics-chart="epss">
+            <button type="button" class="active" data-type="bar">Bar</button>
+            <button type="button" data-type="line">Line</button>
+            <button type="button" data-type="radar">Radar</button>
+            <button type="button" data-type="polarArea">Polar</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mb-2">Probability of exploitation in next 30d.</p>
+        <div class="relative" style="height: 170px;"><canvas id="epssHistChart"></canvas></div>
+      </div>
+
+      <!-- KEV vs non-KEV (interactive) -->
+      <div class="rounded-xl p-4 bg-slate-900/40 border border-indigo-500/20"
+           data-analytics-card="kev">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+            CISA KEV · actively exploited
+          </div>
+          <div class="chart-toggle chart-toggle-sm" data-analytics-chart="kev">
+            <button type="button" class="active" data-type="doughnut">Donut</button>
+            <button type="button" data-type="pie">Pie</button>
+            <button type="button" data-type="polarArea">Polar</button>
+            <button type="button" data-type="bar">Bar</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mb-2">
+          {{ fleet.kev_split.kev or 0 }} of {{ (fleet.kev_split.kev or 0) + (fleet.kev_split.non_kev or 0) }} unique remaining CVEs.
+        </p>
+        <div class="relative" style="height: 170px;"><canvas id="kevSplitChart"></canvas></div>
+      </div>
+
+      <!-- Top services by risk (interactive) -->
+      <div class="rounded-xl p-4 bg-slate-900/40 border border-indigo-500/20"
+           data-analytics-card="services">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+            Top services · remaining risk
+          </div>
+          <div class="chart-toggle chart-toggle-sm" data-analytics-chart="services">
+            <button type="button" class="active" data-type="hbar">H-Bar</button>
+            <button type="button" data-type="bar">Bar</button>
+            <button type="button" data-type="radar">Radar</button>
+            <button type="button" data-type="polarArea">Polar</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mb-2">Aggregate KEV+EPSS+CVSS risk per service.</p>
+        <div class="relative" style="height: 170px;"><canvas id="topServicesChart"></canvas></div>
+      </div>
+    </div>
+
+    {% if fleet.effectiveness_trend %}
+    <!-- Patch effectiveness trend (interactive) -->
+    <div class="rounded-xl p-4 bg-slate-900/40 border border-indigo-500/20"
+         data-analytics-card="trend">
+      <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+          Patch effectiveness trend
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="chart-toggle chart-toggle-sm" data-analytics-chart="trend">
+            <button type="button" class="active" data-type="line">Area</button>
+            <button type="button" data-type="line-plain">Line</button>
+            <button type="button" data-type="bar">Bar</button>
+            <button type="button" data-type="radar">Radar</button>
+          </div>
+          <span class="text-[10px] text-slate-500">last {{ fleet.effectiveness_trend|length }} events with evidence</span>
+        </div>
+      </div>
+      <p class="text-[10px] text-slate-500 mb-2">
+        Percentage of vulnerabilities fixed per event, in chronological order.
+        Click any point to open that patch event.
+      </p>
+      <div class="relative" style="height: 220px;"><canvas id="effectivenessTrendChart"></canvas></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Embed analytics data as JSON for the chart-init JS at the bottom of the page. #}
+  <script id="dashboardAnalyticsData" type="application/json">
+    {
+      "cvss": {{ fleet.cvss_distribution | tojson }},
+      "epss": {{ fleet.epss_distribution | tojson }},
+      "kev":  {{ fleet.kev_split | tojson }},
+      "services": {{ fleet.top_services_by_risk | tojson }},
+      "trend": {{ fleet.effectiveness_trend | tojson }}
+    }
+  </script>
+  {% endif %}
+
+  <!-- =============================================================
+       TOP FIXED CVEs (smaller, still visible)
+       ============================================================= -->
+  {% if fleet.top_fixed %}
+  <div class="glass-card p-5">
+    <div class="section-title mb-3">Recently Patched — Notable CVEs Eliminated</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {% for c in fleet.top_fixed %}
+      <div class="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/30">
+        <div class="flex items-center gap-2 mb-1">
+          <a href="https://nvd.nist.gov/vuln/detail/{{ c.cve }}" target="_blank"
+             class="font-mono text-xs text-emerald-300 hover:text-emerald-100">{{ c.cve }}</a>
+          <span class="sev-badge sev-{{ c.severity|lower }}">{{ c.severity }}</span>
+          {% if c.is_kev %}<span class="kev-badge">⚠ KEV</span>{% endif %}
+        </div>
+        <p class="text-xs text-slate-400 line-clamp-2">{{ c.description or "—" }}</p>
+        <div class="mt-2 text-[10px] text-slate-500 font-mono">
+          {% if c.cvss is not none %}CVSS {{ "%.1f"|format(c.cvss) }}{% endif %}
+          {% if c.epss is not none %} · EPSS {{ (c.epss * 100)|round(1) }}%{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- =============================================================
+       PATCH EVENTS — collapsed accordion
+       ============================================================= -->
+  <div class="glass-card p-5">
+    <div class="accordion-head" onclick="toggleAccordion('eventsBody', this)">
+      <div class="flex items-center gap-3">
+        <div class="section-title">Patch Events</div>
+        <span class="text-sm text-slate-500">({{ patch_events|length }})</span>
+        <div class="flex gap-1 ml-2 text-[11px]">
+          <span class="text-slate-400">DEV {{ dev_phase_events }}</span>
+          <span class="text-slate-600">·</span>
+          <span class="text-slate-400">STAGE {{ stage_phase_events }}</span>
+          <span class="text-slate-600">·</span>
+          <span class="text-slate-400">PROD {{ prod_phase_events }}</span>
+          <span class="text-slate-600">·</span>
+          <span class="text-slate-400">CLOSED {{ closed_events }}</span>
+        </div>
+      </div>
+      <svg class="h-5 w-5 chev text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
       </svg>
     </div>
 
-    <!-- Quick Filters -->
-    <div class="flex items-center gap-2 flex-wrap">
-      <span class="text-xs text-slate-500">Quick:</span>
-      <button class="filter-chip active" data-filter="all" onclick="quickFilter('all', this)">All</button>
-      <button class="filter-chip" data-filter="DEV" onclick="quickFilter('DEV', this)">DEV</button>
-      <button class="filter-chip" data-filter="STAGE" onclick="quickFilter('STAGE', this)">STAGE</button>
-      <button class="filter-chip" data-filter="PROD" onclick="quickFilter('PROD', this)">PROD</button>
-      <button class="filter-chip" data-filter="CLOSED" onclick="quickFilter('CLOSED', this)">Closed</button>
-    </div>
+    <div id="eventsBody" class="collapsible">
+      <div class="pt-4">
+        <!-- Filter chips -->
+        <form method="get" action="/" class="flex flex-wrap items-center gap-2 mb-4 text-xs">
+          <select name="service_id" class="filter-chip bg-slate-900/70 text-slate-200"
+                  onchange="this.form.submit()">
+            <option value="">All services</option>
+            {% for s in services %}
+              <option value="{{ s.id }}" {% if selected_service_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+          <select name="environment" class="filter-chip bg-slate-900/70 text-slate-200"
+                  onchange="this.form.submit()">
+            <option value="">All envs</option>
+            {% for e in environment_options %}
+              <option value="{{ e }}" {% if selected_environment == e %}selected{% endif %}>{{ e }}</option>
+            {% endfor %}
+          </select>
+          <select name="state" class="filter-chip bg-slate-900/70 text-slate-200"
+                  onchange="this.form.submit()">
+            <option value="">All states</option>
+            {% for s in state_options %}
+              <option value="{{ s }}" {% if selected_state == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+          {% if selected_service_id or selected_environment or selected_state %}
+            <a href="/" class="filter-chip">clear filters</a>
+          {% endif %}
+        </form>
 
-    <!-- View Toggle -->
-    <div class="view-toggle">
-      <button class="active" onclick="setView('table', this)" title="Table view">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>
-      </button>
-      <button onclick="setView('cards', this)" title="Card view">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <!-- Advanced Filters (collapsible) -->
-  <div id="advancedFilters" class="mt-4 pt-4 border-t border-neutral-700/50 hidden">
-    <form method="get" action="/" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div>
-        <label class="text-xs text-slate-400 mb-1 block">Service</label>
-        <select name="service_id" class="search-glow w-full px-3 py-2 text-sm">
-          <option value="">All Services</option>
-          {% for svc in services %}
-            <option value="{{ svc.id }}" {% if selected_service_id == svc.id %}selected{% endif %}>{{ svc.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="text-xs text-slate-400 mb-1 block">Environment</label>
-        <select name="environment" class="search-glow w-full px-3 py-2 text-sm">
-          <option value="">All Environments</option>
-          {% for env in environment_options %}
-            <option value="{{ env }}" {% if selected_environment == env %}selected{% endif %}>{{ env }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="text-xs text-slate-400 mb-1 block">State</label>
-        <select name="state" class="search-glow w-full px-3 py-2 text-sm">
-          <option value="">All States</option>
-          {% for s in state_options %}
-            <option value="{{ s }}" {% if selected_state == s %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="flex items-end gap-2">
-        <button type="submit" class="action-btn action-btn-primary flex-1">Apply</button>
-        <a href="/" class="action-btn action-btn-secondary">Clear</a>
-      </div>
-    </form>
-  </div>
-  
-  <button onclick="toggleAdvancedFilters()" class="text-xs text-indigo-400 mt-3 hover:text-indigo-300 transition-colors">
-    <span id="filterToggleText">Show advanced filters</span> ▼
-  </button>
-</div>
-
-<!-- Results Info -->
-<div class="flex items-center justify-between mb-4">
-  <div class="text-sm text-slate-400">
-    Showing <span id="visibleCount" class="text-indigo-400 font-semibold">{{ patch_events|length }}</span> of 
-    <span class="font-semibold">{{ total_events }}</span> events
-  </div>
-  <div class="text-xs text-slate-500">
-    Click column headers to sort
-  </div>
-</div>
-
-<!-- Table View -->
-<div id="tableView" class="glass-card overflow-hidden">
-  {% if patch_events %}
-    <div class="overflow-x-auto">
-      <table class="enhanced-table w-full">
-        <thead>
-          <tr>
-            <th onclick="sortTable(0)" class="text-left">Service</th>
-            <th onclick="sortTable(1)" class="text-left">Environment</th>
-            <th onclick="sortTable(2)" class="text-left">AMI ID</th>
-            <th onclick="sortTable(3)" class="text-left">Date</th>
-            <th onclick="sortTable(4)" class="text-left">State</th>
-            <th class="text-right pr-4">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="eventsTableBody">
+        {% if patch_events %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {% for event in patch_events %}
-            <tr class="event-row" 
-                data-service="{{ event.service.name }}" 
-                data-env="{{ event.environment.value }}"
-                data-ami="{{ event.ami_id }}"
-                data-state="{{ event.current_state_code }}"
-                data-id="{{ event.id }}">
-              <td>
-                <div class="font-medium">{{ event.service.name }}</div>
-              </td>
-              <td>
-                <span class="state-badge state-{% if event.environment.value == 'DEV' %}dev{% elif event.environment.value == 'STAGE' %}stage{% else %}prod{% endif %}">
-                  {{ event.environment.value }}
-                </span>
-              </td>
-              <td class="font-mono text-xs text-slate-300">{{ event.ami_id }}</td>
-              <td class="text-slate-400">{{ event.patch_date }}</td>
-              <td>
-                <span class="state-badge 
-                  {% if event.current_state_code.startswith('DEV') %}state-dev
-                  {% elif event.current_state_code.startswith('STAGE') %}state-stage
-                  {% elif event.current_state_code.startswith('PROD') %}state-prod
-                  {% else %}state-closed{% endif %}">
-                  {{ event.current_state_code }}
-                </span>
-              </td>
-              <td class="text-right">
-                <div class="flex items-center justify-end gap-2">
-                  <a href="/patch-events/{{ event.id }}" class="action-btn action-btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    View
-                  </a>
-                  <a href="/patch-events/{{ event.id }}/analysis" class="action-btn action-btn-secondary" title="View Analysis">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </a>
-                </div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Pagination -->
-    <div class="flex items-center justify-between p-4 border-t border-neutral-700/50">
-      <div class="text-xs text-slate-500">
-        Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <button class="pagination-btn" onclick="prevPage()" id="prevBtn" disabled>← Prev</button>
-        <div id="pageNumbers" class="flex gap-1"></div>
-        <button class="pagination-btn" onclick="nextPage()" id="nextBtn">Next →</button>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-500">Per page:</span>
-        <select id="perPage" onchange="changePerPage()" class="search-glow px-2 py-1 text-xs">
-          <option value="5">5</option>
-          <option value="10" selected>10</option>
-          <option value="25">25</option>
-          <option value="50">50</option>
-        </select>
-      </div>
-    </div>
-  {% else %}
-    <div class="empty-state">
-      <div class="empty-state-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-      </div>
-      <h3 class="text-lg font-semibold text-slate-300 mb-2">No patch events found</h3>
-      <p class="text-slate-500 mb-4">Try adjusting your filters or create a new patch event to get started.</p>
-      <a href="/patch-events/new" class="action-btn action-btn-primary">Create Patch Event</a>
-    </div>
-  {% endif %}
-</div>
-
-<!-- Card View (hidden by default) -->
-<div id="cardView" class="hidden">
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="eventsCardGrid">
-    {% for event in patch_events %}
-      <div class="event-card event-card-item" 
-           data-service="{{ event.service.name }}" 
-           data-env="{{ event.environment.value }}"
-           data-ami="{{ event.ami_id }}"
-           data-state="{{ event.current_state_code }}">
-        <div class="flex items-start justify-between mb-3">
-          <div>
-            <h3 class="font-semibold text-white">{{ event.service.name }}</h3>
-            <p class="text-xs text-slate-400 font-mono">{{ event.ami_id }}</p>
-          </div>
-          <span class="state-badge 
-            {% if event.current_state_code.startswith('DEV') %}state-dev
-            {% elif event.current_state_code.startswith('STAGE') %}state-stage
-            {% elif event.current_state_code.startswith('PROD') %}state-prod
-            {% else %}state-closed{% endif %}">
-            {{ event.current_state_code }}
-          </span>
-        </div>
-        <div class="flex items-center gap-4 text-xs text-slate-400 mb-4">
-          <span>{{ event.environment.value }}</span>
-          <span>{{ event.patch_date }}</span>
-        </div>
-        <div class="flex gap-2">
-          <a href="/patch-events/{{ event.id }}" class="action-btn action-btn-primary flex-1 justify-center">View Details</a>
-          <a href="/patch-events/{{ event.id }}/analysis" class="action-btn action-btn-secondary" title="Analysis">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
+          <a href="/patch-events/{{ event.id }}" class="event-card block">
+            <div class="flex items-center justify-between mb-2">
+              <div class="font-semibold text-slate-100 truncate">{{ event.service.name }}</div>
+              <span class="text-[10px] px-2 py-0.5 rounded-full font-mono
+                {% if event.environment.value == 'PROD' %}bg-rose-500/20 text-rose-300
+                {% elif event.environment.value == 'STAGE' %}bg-amber-500/20 text-amber-300
+                {% else %}bg-sky-500/20 text-sky-300{% endif %}">
+                {{ event.environment.value }}
+              </span>
+            </div>
+            <div class="text-xs text-slate-400 font-mono mb-2">
+              AMI {{ event.ami_id }} · {{ event.patch_date }}
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] px-2 py-0.5 rounded
+                bg-slate-800 border border-slate-700 text-slate-300 font-mono">
+                {{ event.current_state_code }}
+              </span>
+              {% if event.dev_evidence_available %}
+                <span class="text-[10px] text-emerald-400">✓ evidence</span>
+              {% else %}
+                <span class="text-[10px] text-slate-600">pending</span>
+              {% endif %}
+            </div>
           </a>
+          {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-10 text-slate-500 text-sm">
+          No patch events yet. <a href="/patch-events/new" class="text-indigo-400 underline">Create your first one</a>.
+        </div>
+        {% endif %}
       </div>
-    {% endfor %}
+    </div>
   </div>
+
+  <footer class="text-center py-6 text-[11px] text-slate-500 space-y-1">
+    <div>AI reasoning by local Ollama · No data leaves this machine.</div>
+    <div>Threat intelligence: NVD · FIRST.org EPSS · CISA KEV · Public sources only.</div>
+  </footer>
 </div>
 
-<!-- Keyboard Shortcuts Modal -->
-<dialog id="shortcutsModal" class="modal">
-  <div class="modal-box glass-card">
-    <h3 class="font-bold text-lg mb-4">⌨️ Keyboard Shortcuts</h3>
-    <div class="space-y-2 text-sm">
-      <div class="flex justify-between"><span>Search</span><span class="kbd-hint">/</span></div>
-      <div class="flex justify-between"><span>Create new event</span><span class="kbd-hint">N</span></div>
-      <div class="flex justify-between"><span>Toggle view</span><span class="kbd-hint">V</span></div>
-      <div class="flex justify-between"><span>Show shortcuts</span><span class="kbd-hint">?</span></div>
-      <div class="flex justify-between"><span>Close modal</span><span class="kbd-hint">Esc</span></div>
-    </div>
-    <div class="modal-action">
-      <form method="dialog"><button class="btn">Close</button></form>
-    </div>
-  </div>
-</dialog>
-
+<!-- =============================================================
+     SCRIPTS
+     ============================================================= -->
 <script>
-  // State
-  let currentPage = 1;
-  let perPage = 10;
-  let currentFilter = 'all';
-  let currentView = 'table';
-  let sortColumn = -1;
-  let sortAsc = true;
+function toggleAccordion(id, head) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  body.classList.toggle('open');
+  const chev = head.querySelector('.chev');
+  if (chev) chev.classList.toggle('open');
+}
 
-  // Toast
-  function showToast(message, duration = 3000) {
-    const toast = document.getElementById('toast');
-    document.getElementById('toastMessage').textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), duration);
-  }
+// ---- Severity chart with hot-swappable type (donut/bar/radar/polar) ---
+// Uses dual datasets (Remaining + Fixed) so one panel now answers BOTH
+// "what's left?" and "what was patched?". The chart-toggle pills call
+// switchSevChart('bar') etc. to rebuild without a server round-trip.
+let sevChartInstance = null;
+function buildSevChart(type) {
+  const node = document.getElementById('sevChartData');
+  const el = document.getElementById('sevChart');
+  if (!node || !el || typeof Chart === 'undefined') return;
+  let payload; try { payload = JSON.parse(node.textContent); } catch (_) { return; }
 
-  // Animated counters
-  function animateCounters() {
-    document.querySelectorAll('.counter-value').forEach(counter => {
-      const target = parseInt(counter.dataset.target) || 0;
-      const duration = 1500;
-      const step = target / (duration / 16);
-      let current = 0;
-      
-      const timer = setInterval(() => {
-        current += step;
-        if (current >= target) {
-          counter.textContent = target;
-          clearInterval(timer);
-        } else {
-          counter.textContent = Math.floor(current);
-        }
-      }, 16);
-    });
-  }
+  const labels = ['Critical', 'High', 'Medium', 'Low'];
+  const remaining = labels.map(l => payload.remaining[l.toUpperCase()] || 0);
+  const fixed     = labels.map(l => payload.fixed[l.toUpperCase()] || 0);
+  const colors    = ['#ef4444', '#fb923c', '#eab308', '#22c55e'];
 
-  // Filter events
-  function filterEvents() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    const rows = document.querySelectorAll('.event-row');
-    const cards = document.querySelectorAll('.event-card-item');
-    let visibleCount = 0;
+  // For "single-series" types (donut/polar) we show Remaining only;
+  // bar/radar use both datasets side-by-side for comparison.
+  const isSingle = (type === 'doughnut' || type === 'polarArea');
+  const datasets = isSingle
+    ? [{
+        label: 'Remaining',
+        data: remaining,
+        backgroundColor: colors.map(c => c + 'cc'),
+        borderColor: 'rgba(15,23,42,0.9)',
+        borderWidth: 2,
+      }]
+    : [
+        {
+          label: 'Remaining',
+          data: remaining,
+          backgroundColor: 'rgba(239,68,68,.55)',
+          borderColor: '#ef4444',
+          borderWidth: 2,
+          pointBackgroundColor: '#ef4444',
+        },
+        {
+          label: 'Fixed',
+          data: fixed,
+          backgroundColor: 'rgba(34,197,94,.45)',
+          borderColor: '#22c55e',
+          borderWidth: 2,
+          pointBackgroundColor: '#22c55e',
+        },
+      ];
 
-    const filterFn = (el) => {
-      const service = el.dataset.service.toLowerCase();
-      const ami = el.dataset.ami.toLowerCase();
-      const state = el.dataset.state.toLowerCase();
-      const env = el.dataset.env.toLowerCase();
-      
-      const matchesSearch = service.includes(searchTerm) || ami.includes(searchTerm) || state.includes(searchTerm);
-      const matchesFilter = currentFilter === 'all' || state.startsWith(currentFilter.toLowerCase()) || (currentFilter === 'CLOSED' && state === 'closed');
-      
-      return matchesSearch && matchesFilter;
+  const baseTooltip = {
+    backgroundColor: 'rgba(15,23,42,.95)',
+    borderColor: 'rgba(99,102,241,.4)',
+    borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+  };
+
+  // Type-specific options.
+  const opts = {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 700, easing: 'easeOutQuart' },
+    plugins: {
+      legend: { position: 'bottom',
+                labels: { color: '#cbd5e1', font: { size: 11 }, padding: 10 } },
+      tooltip: baseTooltip,
+    },
+  };
+  if (type === 'doughnut') opts.cutout = '65%';
+  if (type === 'bar') {
+    opts.scales = {
+      x: { ticks: { color: '#cbd5e1' }, grid: { display: false } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.08)' },
+           beginAtZero: true },
     };
+  }
+  if (type === 'radar') {
+    opts.scales = {
+      r: {
+        angleLines: { color: 'rgba(148,163,184,.12)' },
+        grid:       { color: 'rgba(148,163,184,.10)' },
+        pointLabels:{ color: '#cbd5e1', font: { size: 11, weight: '600' } },
+        ticks:      { color: '#64748b', backdropColor: 'transparent', stepSize: 1 },
+      },
+    };
+  }
 
-    rows.forEach(row => {
-      if (filterFn(row)) {
-        row.style.display = '';
-        visibleCount++;
-      } else {
-        row.style.display = 'none';
+  if (sevChartInstance) sevChartInstance.destroy();
+  sevChartInstance = new Chart(el, { type, data: { labels, datasets }, options: opts });
+}
+
+(function initSevChart() {
+  if (typeof Chart === 'undefined') return;
+  buildSevChart('doughnut');
+  // Wire the chart-type toggle pills.
+  document.querySelectorAll('#sevChartCard [data-sev-type]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#sevChartCard [data-sev-type]')
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      buildSevChart(btn.dataset.sevType);
+    });
+  });
+})();
+
+// ============================================================
+// KPI drill-down — clicking any KPI tile opens an inline panel
+// below the grid with a chart + ranked CVE/event list. Click the
+// same tile again, or the close X, to dismiss.
+// ============================================================
+(function initKpiDrilldown() {
+  const node = document.getElementById('kpiDrilldownData');
+  const grid = document.getElementById('kpiGrid');
+  const panel = document.getElementById('kpiDrilldown');
+  if (!node || !grid || !panel || typeof Chart === 'undefined') return;
+  let DATA; try { DATA = JSON.parse(node.textContent); } catch (_) { return; }
+
+  let drillChart = null;
+  let activeKpi = null;
+
+  const SEV_COLORS = {
+    CRITICAL: '#ef4444', HIGH: '#fb923c',
+    MEDIUM:   '#eab308', LOW:  '#22c55e',
+  };
+  const TOOLTIP = {
+    backgroundColor: 'rgba(15,23,42,.95)',
+    borderColor: 'rgba(99,102,241,.4)',
+    borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+  };
+  const AXIS = { color: '#94a3b8', font: { size: 10 } };
+  const GRID = { color: 'rgba(148,163,184,.08)' };
+
+  function nvdLink(cve) {
+    return '<a href="https://nvd.nist.gov/vuln/detail/' + cve +
+           '" target="_blank">' + cve + '</a>';
+  }
+
+  function renderCveList(list, emptyMsg) {
+    if (!list || !list.length) {
+      return '<div class="text-xs text-slate-500">' + emptyMsg + '</div>';
+    }
+    const rows = list.map(c => {
+      const sev = (c.severity || '').toUpperCase();
+      const cvss = c.cvss != null ? Number(c.cvss).toFixed(1) : '—';
+      const epss = c.epss != null ? (Number(c.epss) * 100).toFixed(1) + '%' : '—';
+      const kev = c.is_kev ? '<span class="text-[10px] text-rose-300">⚠ KEV</span>' : '';
+      return '<li>' +
+        '<span class="font-mono text-xs">' + nvdLink(c.cve) + '</span>' +
+        '<span class="sev-badge sev-' + sev.toLowerCase() + '">' + sev + '</span>' +
+        '<span class="text-[10px] text-slate-500 font-mono whitespace-nowrap">' +
+          'CVSS ' + cvss + ' · EPSS ' + epss +
+        '</span>' + kev +
+      '</li>';
+    }).join('');
+    return '<ul class="cve-mini">' + rows + '</ul>';
+  }
+
+  function buildChart(config) {
+    if (drillChart) drillChart.destroy();
+    const ctx = document.getElementById('kpiDrillChart').getContext('2d');
+    drillChart = new Chart(ctx, config);
+  }
+
+  // Each KPI handler returns {title, eyebrow, explanation, listHtml, chart}.
+  const HANDLERS = {
+    cves: () => {
+      const services = DATA.top_services || [];
+      const labels = services.map(s => s.service);
+      const data   = services.map(s => s.remaining);
+      return {
+        eyebrow: 'fleet inventory',
+        title: 'Unique CVEs · ' + DATA.totals.cves,
+        explanation:
+          'Distinct CVE identifiers still present after patching, ' +
+          'aggregated across every patch event. ' + DATA.totals.evidence +
+          ' of ' + DATA.totals.events + ' events have computed evidence; ' +
+          'the chart shows which services carry the most remaining ' +
+          'vulnerabilities so you can prioritise next.',
+        listHtml: services.length
+          ? '<ul class="cve-mini">' + services.map(s =>
+              '<li><span class="font-mono text-xs">' + s.service + '</span>' +
+              '<span class="text-[10px] text-slate-400">' + s.remaining +
+              ' remaining · risk ' + s.risk + '</span></li>'
+            ).join('') + '</ul>'
+          : '<div class="text-xs text-slate-500">No remaining vulnerabilities.</div>',
+        chart: {
+          type: 'bar',
+          data: { labels, datasets: [{
+            label: 'Remaining vulns', data,
+            backgroundColor: 'rgba(99,102,241,.7)', borderColor: '#6366f1',
+            borderWidth: 1, borderRadius: 6,
+          }] },
+          options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: AXIS, grid: GRID, beginAtZero: true },
+                      y: { ticks: AXIS, grid: { display: false } } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+
+    kev: () => {
+      const list = DATA.kev_list || [];
+      return {
+        eyebrow: 'CISA known-exploited',
+        title: 'CISA KEV · ' + DATA.totals.kev + ' active CVEs',
+        explanation:
+          'CVEs on the CISA Known Exploited Vulnerabilities catalogue. ' +
+          'These are not theoretical — attackers are weaponising them ' +
+          'against real organisations right now. Treat as P0 unless ' +
+          'compensating controls are documented.',
+        listHtml: renderCveList(list, 'No KEV-listed CVEs in remaining set.'),
+        chart: {
+          type: 'bar',
+          data: {
+            labels: list.map(c => c.cve),
+            datasets: [{
+              label: 'Risk score', data: list.map(c => c.risk),
+              backgroundColor: list.map(c => SEV_COLORS[c.severity] + 'cc'),
+              borderColor: list.map(c => SEV_COLORS[c.severity]),
+              borderWidth: 1, borderRadius: 6,
+            }],
+          },
+          options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: { x: { min: 0, max: 100, ticks: AXIS, grid: GRID },
+                      y: { ticks: { ...AXIS, font: { family: 'monospace', size: 10 } },
+                           grid: { display: false } } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+
+    epss: () => {
+      const list = DATA.high_epss_list || [];
+      return {
+        eyebrow: 'exploit prediction',
+        title: 'High EPSS · ' + DATA.totals.high_epss + ' likely-exploited',
+        explanation:
+          'EPSS (Exploit Prediction Scoring System, by FIRST.org) is ' +
+          'the modelled probability that a CVE will be exploited in ' +
+          'the wild within the next 30 days. Anything ≥ 70% deserves ' +
+          'aggressive triage even if no public exploit exists yet.',
+        listHtml: renderCveList(list, 'No CVEs with EPSS ≥ 70% remaining.'),
+        chart: {
+          type: 'bar',
+          data: {
+            labels: list.map(c => c.cve),
+            datasets: [{
+              label: 'EPSS %', data: list.map(c => (c.epss || 0) * 100),
+              backgroundColor: 'rgba(251,146,60,.7)', borderColor: '#fb923c',
+              borderWidth: 1, borderRadius: 6,
+            }],
+          },
+          options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: { x: { min: 0, max: 100, ticks: { ...AXIS, callback: v => v + '%' },
+                           grid: GRID },
+                      y: { ticks: { ...AXIS, font: { family: 'monospace', size: 10 } },
+                           grid: { display: false } } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+
+    cvss: () => {
+      const list = DATA.critical_cvss_list || [];
+      return {
+        eyebrow: 'severity',
+        title: 'CVSS ≥ 9.0 · ' + DATA.totals.crit_cvss + ' critical CVEs',
+        explanation:
+          'NVD CVSS v3 base score of 9.0 or higher (Critical). These ' +
+          'are technically catastrophic when exploited — typically ' +
+          'remote, unauthenticated, full-system compromise — even if ' +
+          'EPSS hasn\'t modelled them as imminent.',
+        listHtml: renderCveList(list, 'No CVEs with CVSS ≥ 9.0 remaining.'),
+        chart: {
+          type: 'bar',
+          data: {
+            labels: list.map(c => c.cve),
+            datasets: [{
+              label: 'CVSS v3', data: list.map(c => c.cvss || 0),
+              backgroundColor: 'rgba(234,179,8,.7)', borderColor: '#eab308',
+              borderWidth: 1, borderRadius: 6,
+            }],
+          },
+          options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: { x: { min: 0, max: 10, ticks: AXIS, grid: GRID },
+                      y: { ticks: { ...AXIS, font: { family: 'monospace', size: 10 } },
+                           grid: { display: false } } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+
+    effectiveness: () => {
+      const trend = DATA.trend || [];
+      return {
+        eyebrow: 'kpi · trend',
+        title: 'Patch Effectiveness · ' + DATA.totals.effectiveness + '%',
+        explanation:
+          'Percentage of vulnerabilities each patch event actually ' +
+          'eliminates (fixed ÷ before). Cumulative number is ' +
+          DATA.totals.fixed + ' fixed of ' + DATA.totals.vulns +
+          ' total. Watch the trend line: declining effectiveness can ' +
+          'signal regression or partial-rollouts.',
+        listHtml: trend.length
+          ? '<ul class="cve-mini">' + trend.slice().reverse().map(p =>
+              '<li><span class="font-mono text-xs">' + p.label + '</span>' +
+              '<span class="text-[10px] text-slate-400">' + p.date + '</span>' +
+              '<span class="text-[10px] text-emerald-300">' + p.effectiveness +
+              '%</span><span class="text-[10px] text-slate-500">' +
+              p.fixed + '/' + p.before + '</span></li>'
+            ).join('') + '</ul>'
+          : '<div class="text-xs text-slate-500">No completed events yet.</div>',
+        chart: {
+          type: 'line',
+          data: {
+            labels: trend.map(p => p.label),
+            datasets: [{
+              label: 'Effectiveness %', data: trend.map(p => p.effectiveness),
+              fill: true, tension: .35, borderWidth: 2, borderColor: '#a78bfa',
+              backgroundColor: 'rgba(167,139,250,.18)',
+              pointBackgroundColor: '#c4b5fd', pointRadius: 4,
+            }],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: AXIS, grid: { display: false } },
+                      y: { min: 0, max: 100,
+                           ticks: { ...AXIS, callback: v => v + '%' },
+                           grid: GRID } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+
+    events: () => {
+      const phase = DATA.events_phase || {};
+      const labels = ['DEV', 'STAGE', 'PROD', 'CLOSED'];
+      const data = labels.map(l => phase[l] || 0);
+      return {
+        eyebrow: 'lifecycle',
+        title: 'Patch Events · ' + DATA.totals.events,
+        explanation:
+          'All patch events grouped by current lifecycle stage. ' +
+          DATA.totals.evidence + ' have computed DEV evidence. ' +
+          'A healthy fleet keeps events flowing left-to-right with ' +
+          'no pile-up at any single phase.',
+        listHtml:
+          '<ul class="cve-mini">' + labels.map((l, i) =>
+            '<li><span class="font-mono text-xs">' + l + '</span>' +
+            '<span class="text-[10px] text-slate-400">' + data[i] +
+            ' event' + (data[i] === 1 ? '' : 's') + '</span></li>'
+          ).join('') + '</ul>',
+        chart: {
+          type: 'bar',
+          data: { labels, datasets: [{
+            label: 'Events', data,
+            backgroundColor: ['#3b82f6', '#fbbf24', '#22c55e', '#94a3b8'],
+            borderRadius: 8, borderWidth: 0,
+          }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: { color: '#cbd5e1' }, grid: { display: false } },
+                      y: { ticks: AXIS, grid: GRID, beginAtZero: true } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        },
+      };
+    },
+  };
+
+  function open(kpi) {
+    const handler = HANDLERS[kpi];
+    if (!handler) return;
+    const v = handler();
+    document.getElementById('kpiDrillEyebrow').textContent     = v.eyebrow;
+    document.getElementById('kpiDrillTitle').textContent       = v.title;
+    document.getElementById('kpiDrillExplanation').textContent = v.explanation;
+    document.getElementById('kpiDrillList').innerHTML          = v.listHtml;
+    panel.classList.remove('hidden');
+    buildChart(v.chart);
+    grid.querySelectorAll('.kpi-clickable').forEach(b => {
+      b.classList.toggle('active', b.dataset.kpi === kpi);
+    });
+    activeKpi = kpi;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  window.closeKpiDrilldown = function () {
+    panel.classList.add('hidden');
+    if (drillChart) { drillChart.destroy(); drillChart = null; }
+    grid.querySelectorAll('.kpi-clickable').forEach(b => b.classList.remove('active'));
+    activeKpi = null;
+  };
+
+  grid.querySelectorAll('.kpi-clickable').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const kpi = btn.dataset.kpi;
+      if (kpi === activeKpi) { window.closeKpiDrilldown(); return; }
+      open(kpi);
+    });
+  });
+})();
+
+// ============================================================
+// Intelligence Analytics — hot-swappable chart builders.
+// Every card's toggle pills call buildAnalyticsChart(cardKey, type)
+// which destroys the old Chart instance and re-renders in the new
+// type without a server round-trip. Trend chart also supports
+// click-to-navigate (point click -> patch event detail).
+// ============================================================
+(function initAnalytics() {
+  const node = document.getElementById('dashboardAnalyticsData');
+  if (!node || typeof Chart === 'undefined') return;
+  let A; try { A = JSON.parse(node.textContent); } catch (_) { return; }
+
+  const TOOLTIP = {
+    backgroundColor: 'rgba(15,23,42,.95)',
+    borderColor: 'rgba(99,102,241,.4)',
+    borderWidth: 1, titleColor: '#e0e7ff', bodyColor: '#cbd5e1',
+  };
+  const AXIS  = { color: '#94a3b8', font: { size: 10 } };
+  const GRID  = { color: 'rgba(148,163,184,.08)' };
+  const GRAD  = ['#22c55e','#84cc16','#eab308','#fb923c','#ef4444','#64748b'];
+
+  // Cache Chart instances so toggle clicks can destroy before rebuild.
+  const INSTANCES = {};
+
+  /** Linear-gradient builder for filled line/area charts. */
+  function makeGradient(ctx, h, colorTop, colorBot) {
+    const c = ctx.chart.ctx;
+    const g = c.createLinearGradient(0, 0, 0, h || 200);
+    g.addColorStop(0, colorTop);
+    g.addColorStop(1, colorBot);
+    return g;
+  }
+
+  // ----------------------------------------------------------------
+  // Per-chart config builders. Each returns a Chart.js config ready
+  // to pass to `new Chart(el, cfg)`. They read the requested "type"
+  // and map it to the right Chart.js type + options bundle.
+  // ----------------------------------------------------------------
+  const BUILDERS = {
+    // CVSS bucket histogram — ordered low→high severity.
+    cvss(type) {
+      const order = ['0-3','3-5','5-7','7-9','9-10','unknown'];
+      const data = order.map(k => (A.cvss || {})[k] || 0);
+      return histogramConfig(type, order, data, GRAD);
+    },
+    // EPSS bucket histogram — ordered low→high likelihood.
+    epss(type) {
+      const order = ['<1%','1-5%','5-25%','25-70%','70-100%','unknown'];
+      const data = order.map(k => (A.epss || {})[k] || 0);
+      return histogramConfig(type, order, data, GRAD);
+    },
+    // KEV vs non-KEV split — single 2-value dataset.
+    kev(type) {
+      const labels = ['Actively exploited (KEV)', 'Other'];
+      const data = [(A.kev && A.kev.kev) || 0, (A.kev && A.kev.non_kev) || 0];
+      const colors = ['rgba(239,68,68,.85)', 'rgba(99,102,241,.55)'];
+      const borders = ['#ef4444', '#6366f1'];
+      if (type === 'bar') {
+        return {
+          type: 'bar',
+          data: { labels, datasets: [{
+            data, backgroundColor: colors, borderColor: borders,
+            borderWidth: 1, borderRadius: 6,
+          }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: AXIS, grid: { display: false } },
+                      y: { ticks: AXIS, grid: GRID, beginAtZero: true } },
+            plugins: { legend: { display: false }, tooltip: TOOLTIP },
+          },
+        };
+      }
+      return {
+        type,
+        data: { labels, datasets: [{
+          data, backgroundColor: colors, borderColor: borders,
+          borderWidth: 2, hoverOffset: 8,
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: type === 'doughnut' ? '62%' : undefined,
+          animation: { animateRotate: true, duration: 700 },
+          plugins: {
+            legend: { position: 'bottom',
+                      labels: { color: '#cbd5e1', font: { size: 10 }, padding: 8 } },
+            tooltip: TOOLTIP,
+          },
+        },
+      };
+    },
+    // Top services by risk — labels = service names, values = risk.
+    services(type) {
+      const svcs = Array.isArray(A.services) ? A.services : [];
+      const labels = svcs.map(s => s.service);
+      const data   = svcs.map(s => s.risk);
+      const kevHits = svcs.map(s => s.kev || 0);
+      const bg = kevHits.map(k => k > 0 ? 'rgba(239,68,68,.7)' : 'rgba(99,102,241,.7)');
+      const bd = kevHits.map(k => k > 0 ? '#ef4444' : '#6366f1');
+      const richTooltip = {
+        ...TOOLTIP,
+        callbacks: {
+          label: (ctx) => {
+            const s = svcs[ctx.dataIndex] || {};
+            return [
+              'Risk score: ' + (s.risk ?? '—'),
+              'Remaining:  ' + (s.remaining ?? '—') + ' vulns',
+              'KEV hits:   ' + (s.kev ?? 0),
+              'Events:     ' + (s.events ?? '—'),
+            ];
+          },
+        },
+      };
+
+      if (type === 'hbar' || type === 'bar') {
+        return {
+          type: 'bar',
+          data: { labels, datasets: [{
+            data, backgroundColor: bg, borderColor: bd,
+            borderWidth: 1, borderRadius: 6,
+          }] },
+          options: {
+            indexAxis: type === 'hbar' ? 'y' : 'x',
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 600 },
+            scales: type === 'hbar'
+              ? { x: { ticks: AXIS, grid: GRID, beginAtZero: true },
+                  y: { ticks: { ...AXIS, font: { size: 10 } }, grid: { display: false } } }
+              : { x: { ticks: { ...AXIS, maxRotation: 45, minRotation: 35 },
+                       grid: { display: false } },
+                  y: { ticks: AXIS, grid: GRID, beginAtZero: true } },
+            plugins: { legend: { display: false }, tooltip: richTooltip },
+          },
+        };
+      }
+      // radar / polarArea
+      return {
+        type,
+        data: { labels, datasets: [{
+          label: 'Risk score', data,
+          backgroundColor: type === 'radar' ? 'rgba(99,102,241,.25)'
+                                            : bg,
+          borderColor: '#818cf8', borderWidth: 2,
+          pointBackgroundColor: '#a5b4fc',
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: type === 'radar'
+            ? { r: { angleLines: { color: 'rgba(148,163,184,.12)' },
+                     grid: { color: 'rgba(148,163,184,.10)' },
+                     pointLabels: { color: '#cbd5e1', font: { size: 9 } },
+                     ticks: { color: '#64748b', backdropColor: 'transparent' } } }
+            : undefined,
+          plugins: { legend: { display: false }, tooltip: richTooltip },
+        },
+      };
+    },
+    // Patch effectiveness trend — line/area/bar/radar. Click = open event.
+    trend(type) {
+      const trend = Array.isArray(A.trend) ? A.trend : [];
+      const labels = trend.map(p => p.label + ' · ' + (p.date || '').slice(5));
+      const data   = trend.map(p => p.effectiveness);
+      const tooltipWithFixed = {
+        ...TOOLTIP,
+        callbacks: {
+          afterLabel: (ctx) => {
+            const p = trend[ctx.dataIndex] || {};
+            return p.fixed + ' / ' + p.before + ' fixed';
+          },
+        },
+      };
+
+      const actualType = (type === 'line-plain') ? 'line' : type;
+      const filled = (type === 'line');  // "Area" mode
+
+      if (actualType === 'line') {
+        return {
+          type: 'line',
+          data: { labels, datasets: [{
+            label: 'Effectiveness %', data,
+            fill: filled, tension: .35, borderWidth: 2, borderColor: '#a78bfa',
+            backgroundColor: filled
+              ? (ctx) => makeGradient(ctx, 220,
+                  'rgba(167,139,250,.45)', 'rgba(167,139,250,.02)')
+              : 'transparent',
+            pointBackgroundColor: '#c4b5fd', pointBorderColor: '#1e1b4b',
+            pointRadius: 4, pointHoverRadius: 7,
+          }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            scales: {
+              x: { ticks: AXIS, grid: { display: false } },
+              y: { min: 0, max: 100,
+                   ticks: { ...AXIS, callback: v => v + '%' }, grid: GRID },
+            },
+            plugins: { legend: { display: false }, tooltip: tooltipWithFixed },
+            onClick: (_, elements) => {
+              if (!elements.length) return;
+              const p = trend[elements[0].index];
+              if (p && p.event_id) window.location.href = '/patch-events/' + p.event_id;
+            },
+            onHover: (e, elements) => {
+              e.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+            },
+          },
+        };
+      }
+      if (actualType === 'bar') {
+        return {
+          type: 'bar',
+          data: { labels, datasets: [{
+            label: 'Effectiveness %', data,
+            backgroundColor: data.map(v =>
+              v >= 70 ? 'rgba(34,197,94,.7)'
+              : v >= 40 ? 'rgba(234,179,8,.7)'
+              : 'rgba(239,68,68,.7)'
+            ),
+            borderRadius: 6, borderWidth: 0,
+          }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 700 },
+            scales: {
+              x: { ticks: { ...AXIS, maxRotation: 45, minRotation: 30 },
+                   grid: { display: false } },
+              y: { min: 0, max: 100,
+                   ticks: { ...AXIS, callback: v => v + '%' }, grid: GRID },
+            },
+            plugins: { legend: { display: false }, tooltip: tooltipWithFixed },
+            onClick: (_, elements) => {
+              if (!elements.length) return;
+              const p = trend[elements[0].index];
+              if (p && p.event_id) window.location.href = '/patch-events/' + p.event_id;
+            },
+            onHover: (e, elements) => {
+              e.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+            },
+          },
+        };
+      }
+      // radar
+      return {
+        type: 'radar',
+        data: { labels, datasets: [{
+          label: 'Effectiveness %', data,
+          borderColor: '#a78bfa', borderWidth: 2,
+          backgroundColor: 'rgba(167,139,250,.18)',
+          pointBackgroundColor: '#c4b5fd',
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { r: {
+            min: 0, max: 100, ticks: { stepSize: 20, color: '#64748b',
+                                       backdropColor: 'transparent',
+                                       callback: v => v + '%' },
+            angleLines: { color: 'rgba(148,163,184,.12)' },
+            grid: { color: 'rgba(148,163,184,.10)' },
+            pointLabels: { color: '#cbd5e1', font: { size: 9 } },
+          } },
+          plugins: { legend: { display: false }, tooltip: tooltipWithFixed },
+        },
+      };
+    },
+  };
+
+  /** Shared histogram config used by cvss/epss (bar / line / radar / polar). */
+  function histogramConfig(type, labels, data, colors) {
+    if (type === 'bar') {
+      return {
+        type: 'bar',
+        data: { labels, datasets: [{
+          data, backgroundColor: colors, borderRadius: 6, borderWidth: 0,
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 600 },
+          scales: { x: { ticks: AXIS, grid: { display: false } },
+                    y: { ticks: AXIS, grid: GRID, beginAtZero: true } },
+          plugins: { legend: { display: false }, tooltip: TOOLTIP },
+        },
+      };
+    }
+    if (type === 'line') {
+      return {
+        type: 'line',
+        data: { labels, datasets: [{
+          data, borderColor: '#a5b4fc', borderWidth: 2, tension: .35,
+          fill: true,
+          backgroundColor: (ctx) => makeGradient(ctx, 170,
+            'rgba(165,180,252,.4)', 'rgba(165,180,252,.02)'),
+          pointBackgroundColor: colors, pointRadius: 4,
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { ticks: AXIS, grid: { display: false } },
+                    y: { ticks: AXIS, grid: GRID, beginAtZero: true } },
+          plugins: { legend: { display: false }, tooltip: TOOLTIP },
+        },
+      };
+    }
+    if (type === 'radar') {
+      return {
+        type: 'radar',
+        data: { labels, datasets: [{
+          data, label: 'Count',
+          borderColor: '#818cf8', borderWidth: 2,
+          backgroundColor: 'rgba(99,102,241,.22)',
+          pointBackgroundColor: '#c4b5fd',
+        }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { r: {
+            angleLines: { color: 'rgba(148,163,184,.12)' },
+            grid: { color: 'rgba(148,163,184,.10)' },
+            pointLabels: { color: '#cbd5e1', font: { size: 9 } },
+            ticks: { color: '#64748b', backdropColor: 'transparent' },
+          } },
+          plugins: { legend: { display: false }, tooltip: TOOLTIP },
+        },
+      };
+    }
+    // polarArea
+    return {
+      type: 'polarArea',
+      data: { labels, datasets: [{
+        data, backgroundColor: colors.map(c => c + 'b3'),
+        borderColor: colors, borderWidth: 1,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { animateRotate: true, duration: 700 },
+        scales: { r: {
+          ticks: { color: '#64748b', backdropColor: 'transparent' },
+          grid: { color: 'rgba(148,163,184,.10)' },
+          angleLines: { color: 'rgba(148,163,184,.12)' },
+        } },
+        plugins: {
+          legend: { position: 'bottom',
+                    labels: { color: '#cbd5e1', font: { size: 9 }, padding: 6 } },
+          tooltip: TOOLTIP,
+        },
+      },
+    };
+  }
+
+  const CANVASES = {
+    cvss:     'cvssHistChart',
+    epss:     'epssHistChart',
+    kev:      'kevSplitChart',
+    services: 'topServicesChart',
+    trend:    'effectivenessTrendChart',
+  };
+
+  function build(cardKey, type) {
+    const canvasId = CANVASES[cardKey];
+    const el = canvasId && document.getElementById(canvasId);
+    const builder = BUILDERS[cardKey];
+    if (!el || !builder) return;
+    const cfg = builder(type);
+    if (!cfg) return;
+    if (INSTANCES[cardKey]) INSTANCES[cardKey].destroy();
+    INSTANCES[cardKey] = new Chart(el, cfg);
+  }
+
+  // Initial render of each card with its default active type.
+  Object.keys(CANVASES).forEach(key => {
+    const defaultBtn = document.querySelector(
+      '.chart-toggle[data-analytics-chart="' + key + '"] button.active'
+    );
+    const defaultType = defaultBtn ? defaultBtn.dataset.type
+      : (key === 'kev' ? 'doughnut' : key === 'services' ? 'hbar'
+         : key === 'trend' ? 'line' : 'bar');
+    build(key, defaultType);
+  });
+
+  // Wire toggle clicks.
+  document.querySelectorAll('.chart-toggle[data-analytics-chart]').forEach(group => {
+    const key = group.dataset.analyticsChart;
+    group.querySelectorAll('button[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        group.querySelectorAll('button[data-type]')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        build(key, btn.dataset.type);
+      });
+    });
+  });
+})();
+
+// ---- AI fleet briefing (lazy) --------------------------------------
+async function loadFleetBriefing(force) {
+  const box = document.getElementById('fleetBriefing');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="flex items-center gap-3 text-sm text-indigo-300">
+      <div class="spinner"></div>
+      <span>Thinking locally on CPU — first run loads llama3.1:8b (60–120s).
+            Subsequent runs are cached and instant.</span>
+    </div>`;
+  try {
+    const url = '/ai-fleet-briefing' + (force ? '?refresh=true' : '');
+    const r = await fetch(url);
+    const html = await r.text();
+    box.innerHTML = html;
+    // Markdown render if we got a raw block
+    box.querySelectorAll('[data-raw-markdown]').forEach(el => {
+      if (typeof marked !== 'undefined') {
+        try { el.innerHTML = marked.parse(el.dataset.rawMarkdown || ''); }
+        catch (_) {}
       }
     });
-
-    cards.forEach(card => {
-      card.style.display = filterFn(card) ? '' : 'none';
-    });
-
-    document.getElementById('visibleCount').textContent = visibleCount;
-    updatePagination();
+    const regen = document.getElementById('aiRegenBtn');
+    if (regen) regen.classList.remove('hidden');
+  } catch (err) {
+    box.innerHTML = `
+      <div class="p-3 rounded-lg bg-amber-900/30 border border-amber-500/50 text-amber-200 text-xs">
+        Briefing unavailable: ${err.message}
+      </div>`;
   }
+}
 
-  // Quick filter
-  function quickFilter(filter, btn) {
-    currentFilter = filter;
-    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-    btn.classList.add('active');
-    filterEvents();
-    showToast(`Filtered: ${filter === 'all' ? 'All events' : filter}`);
-  }
-
-  // Toggle advanced filters
-  function toggleAdvancedFilters() {
-    const filters = document.getElementById('advancedFilters');
-    const text = document.getElementById('filterToggleText');
-    filters.classList.toggle('hidden');
-    text.textContent = filters.classList.contains('hidden') ? 'Show advanced filters' : 'Hide advanced filters';
-  }
-
-  // View toggle
-  function setView(view, btn) {
-    currentView = view;
-    document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    
-    document.getElementById('tableView').classList.toggle('hidden', view !== 'table');
-    document.getElementById('cardView').classList.toggle('hidden', view !== 'cards');
-    showToast(`Switched to ${view} view`);
-  }
-
-  // Sort table
-  function sortTable(colIndex) {
-    const tbody = document.getElementById('eventsTableBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    const headers = document.querySelectorAll('.enhanced-table thead th');
-    
-    // Toggle sort direction
-    if (sortColumn === colIndex) {
-      sortAsc = !sortAsc;
-    } else {
-      sortColumn = colIndex;
-      sortAsc = true;
-    }
-
-    // Update header classes
-    headers.forEach((h, i) => {
-      h.classList.remove('sorted-asc', 'sorted-desc');
-      if (i === colIndex) {
-        h.classList.add(sortAsc ? 'sorted-asc' : 'sorted-desc');
-      }
-    });
-
-    // Sort rows
-    rows.sort((a, b) => {
-      const aVal = a.cells[colIndex].textContent.trim();
-      const bVal = b.cells[colIndex].textContent.trim();
-      return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-
-    rows.forEach(row => tbody.appendChild(row));
-    showToast(`Sorted by column ${colIndex + 1}`);
-  }
-
-  // Pagination
-  function updatePagination() {
-    const visibleRows = Array.from(document.querySelectorAll('.event-row')).filter(r => r.style.display !== 'none');
-    const totalPages = Math.ceil(visibleRows.length / perPage) || 1;
-    
-    document.getElementById('totalPages').textContent = totalPages;
-    document.getElementById('currentPage').textContent = currentPage;
-    document.getElementById('prevBtn').disabled = currentPage === 1;
-    document.getElementById('nextBtn').disabled = currentPage === totalPages;
-
-    // Show/hide rows based on page
-    visibleRows.forEach((row, i) => {
-      const start = (currentPage - 1) * perPage;
-      const end = start + perPage;
-      row.style.display = (i >= start && i < end) ? '' : 'none';
-    });
-
-    // Update visible count for current page
-    const pageRows = visibleRows.filter((_, i) => {
-      const start = (currentPage - 1) * perPage;
-      const end = start + perPage;
-      return i >= start && i < end;
-    });
-    document.getElementById('visibleCount').textContent = pageRows.length;
-  }
-
-  function prevPage() {
-    if (currentPage > 1) {
-      currentPage--;
-      updatePagination();
-    }
-  }
-
-  function nextPage() {
-    const visibleRows = Array.from(document.querySelectorAll('.event-row')).filter(r => r.style.display !== 'none');
-    const totalPages = Math.ceil(visibleRows.length / perPage);
-    if (currentPage < totalPages) {
-      currentPage++;
-      updatePagination();
-    }
-  }
-
-  function changePerPage() {
-    perPage = parseInt(document.getElementById('perPage').value);
-    currentPage = 1;
-    updatePagination();
-  }
-
-  // Keyboard shortcuts
-  document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
-      if (e.key === 'Escape') e.target.blur();
+async function checkAiAndBrief() {
+  try {
+    const r = await fetch('/ai-status', { cache: 'no-store' });
+    const data = await r.json();
+    const nameEl = document.getElementById('aiModelName');
+    if (nameEl && data.configured_model) nameEl.textContent = data.configured_model;
+    if (!data.available) {
+      document.getElementById('fleetBriefing').innerHTML = `
+        <div class="p-3 rounded-lg bg-amber-900/25 border border-amber-500/40 text-amber-200 text-xs">
+          <strong>Ollama not reachable.</strong> The dashboard still works without AI —
+          all CVE data above comes from NVD / EPSS / CISA KEV directly.
+          Install Ollama from <a href="https://ollama.com" target="_blank" class="underline">ollama.com</a>
+          and run <code>ollama pull ${data.configured_model || 'llama3.1:8b'}</code> to enable the briefing.
+        </div>`;
       return;
     }
-
-    switch(e.key) {
-      case '/':
-        e.preventDefault();
-        document.getElementById('searchInput').focus();
-        break;
-      case 'n':
-      case 'N':
-        window.location.href = '/patch-events/new';
-        break;
-      case 'v':
-      case 'V':
-        const newView = currentView === 'table' ? 'cards' : 'table';
-        const btn = document.querySelector(`.view-toggle button:${newView === 'table' ? 'first' : 'last'}-child`);
-        setView(newView, btn);
-        break;
-      case '?':
-        document.getElementById('shortcutsModal').showModal();
-        break;
-      case 'Escape':
-        document.querySelectorAll('dialog[open]').forEach(d => d.close());
-        break;
+    const hasModel = (data.installed_models || []).some(m => m === data.configured_model);
+    if (!hasModel) {
+      document.getElementById('fleetBriefing').innerHTML = `
+        <div class="p-3 rounded-lg bg-amber-900/25 border border-amber-500/40 text-amber-200 text-xs">
+          Ollama is running but <code>${data.configured_model}</code> isn't installed.
+          Run <code>ollama pull ${data.configured_model}</code> in a terminal.
+        </div>`;
+      return;
     }
-  });
+    loadFleetBriefing(false);
+  } catch (err) {
+    document.getElementById('fleetBriefing').innerHTML = `
+      <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-600/40 text-slate-300 text-xs">
+        Could not reach AI service: ${err.message}
+      </div>`;
+  }
+}
 
-  // Initialize
-  document.addEventListener('DOMContentLoaded', () => {
-    animateCounters();
-    updatePagination();
-    showToast('Dashboard loaded! Press ? for shortcuts', 3000);
-    
-    // Initialize tooltips
-    if (typeof tippy !== 'undefined') {
-      tippy('[title]', { animation: 'scale' });
-    }
-  });
+// Kick off once the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  // Auto-expand patch events accordion if there are just a few
+  {% if patch_events|length and patch_events|length <= 3 %}
+  toggleAccordion('eventsBody', document.querySelector('.accordion-head'));
+  {% endif %}
+
+  // Kick off fleet briefing only if we actually have CVEs
+  const box = document.getElementById('fleetBriefing');
+  const totalCves = parseInt(box?.dataset.totalCves || '0', 10);
+  if (totalCves === 0) {
+    box.innerHTML = `
+      <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-600/40 text-slate-300 text-xs">
+        No patch events with evidence yet — create one to see AI analysis.
+      </div>`;
+  } else {
+    checkAiAndBrief();
+  }
+
+  if (typeof tippy !== 'undefined') tippy('[title]', { animation: 'scale' });
+});
+
+// Keyboard shortcut: N = new patch event
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.tagName === 'SELECT') return;
+  if (e.key === 'n' || e.key === 'N') window.location.href = '/patch-events/new';
+});
 </script>
 {% endblock %}
-
