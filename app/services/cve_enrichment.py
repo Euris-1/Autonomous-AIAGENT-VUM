@@ -14,6 +14,8 @@ are submitted - no company data ever leaves this machine.
 from __future__ import annotations
 
 import logging
+import os
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -21,16 +23,24 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import CVEIntelligence
+from app.services.real_cve_catalog import get_static_intel
 
 logger = logging.getLogger(__name__)
 
-# Public, free APIs - no auth required
+# Public, free APIs - no auth required (NVD optionally benefits from a key)
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 EPSS_API_URL = "https://api.first.org/data/v1/epss"
 CISA_KEV_URL = (
     "https://www.cisa.gov/sites/default/files/feeds/"
     "known_exploited_vulnerabilities.json"
 )
+
+# NVD rate limits: without API key = 5 req / 30s; with key = 50 req / 30s.
+# Respecting these avoids 429 responses. Users can export NVD_API_KEY for
+# faster enrichment: https://nvd.nist.gov/developers/request-an-api-key
+NVD_API_KEY = os.getenv("NVD_API_KEY", "").strip()
+NVD_MIN_INTERVAL_S = 0.7 if NVD_API_KEY else 6.1
+_NVD_LAST_CALL_AT: float = 0.0
 
 # Cache freshness: re-enrich a CVE if data is older than this
 CACHE_TTL = timedelta(days=7)
@@ -52,18 +62,40 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _nvd_throttle() -> None:
+    """Sleep as needed to respect the NVD rate limit window."""
+    global _NVD_LAST_CALL_AT
+    now = time.monotonic()
+    elapsed = now - _NVD_LAST_CALL_AT
+    if elapsed < NVD_MIN_INTERVAL_S:
+        time.sleep(NVD_MIN_INTERVAL_S - elapsed)
+    _NVD_LAST_CALL_AT = time.monotonic()
+
+
 def _fetch_nvd(client: httpx.Client, cve_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch CVE details from the NVD API."""
-    try:
-        response = client.get(
-            NVD_API_URL,
-            params={"cveId": cve_id},
-            timeout=15.0,
-        )
-        response.raise_for_status()
-        data = response.json()
-    except httpx.HTTPError as exc:
-        logger.warning("NVD fetch failed for %s: %s", cve_id, exc)
+    """Fetch CVE details from the NVD API (throttled, with one retry on 429)."""
+    headers = {"apiKey": NVD_API_KEY} if NVD_API_KEY else {}
+    for attempt in range(2):
+        _nvd_throttle()
+        try:
+            response = client.get(
+                NVD_API_URL,
+                params={"cveId": cve_id},
+                headers=headers,
+                timeout=20.0,
+            )
+            if response.status_code == 429 and attempt == 0:
+                # Back off and retry once; NVD window is 30s
+                logger.info("NVD 429 for %s, backing off 30s", cve_id)
+                time.sleep(30.0)
+                continue
+            response.raise_for_status()
+            data = response.json()
+            break
+        except httpx.HTTPError as exc:
+            logger.warning("NVD fetch failed for %s: %s", cve_id, exc)
+            return None
+    else:
         return None
 
     vulnerabilities = data.get("vulnerabilities") or []
@@ -124,7 +156,7 @@ def _fetch_nvd(client: httpx.Client, cve_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_epss(client: httpx.Client, cve_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch EPSS exploit probability score from FIRST.org."""
+    """Fetch EPSS exploit probability score from FIRST.org for a single CVE."""
     try:
         response = client.get(
             EPSS_API_URL,
@@ -153,6 +185,53 @@ def _fetch_epss(client: httpx.Client, cve_id: str) -> Optional[Dict[str, Any]]:
         }
     except (ValueError, TypeError):
         return None
+
+
+def _fetch_epss_bulk(
+    client: httpx.Client, cve_ids: List[str]
+) -> Dict[str, Dict[str, Any]]:
+    """Batch EPSS lookup. FIRST.org accepts comma-separated CVE IDs.
+
+    Much faster than calling once per CVE. Returns {cve_id: {epss_score, epss_percentile}}.
+    """
+    if not cve_ids:
+        return {}
+
+    result: Dict[str, Dict[str, Any]] = {}
+    # Chunk to keep URLs reasonable
+    chunk_size = 50
+    for i in range(0, len(cve_ids), chunk_size):
+        chunk = cve_ids[i : i + chunk_size]
+        try:
+            response = client.get(
+                EPSS_API_URL,
+                params={"cve": ",".join(chunk)},
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("EPSS bulk fetch failed: %s", exc)
+            continue
+
+        for entry in data.get("data") or []:
+            cid = (entry.get("cve") or "").upper()
+            if not cid:
+                continue
+            try:
+                result[cid] = {
+                    "epss_score": (
+                        float(entry.get("epss")) if entry.get("epss") else None
+                    ),
+                    "epss_percentile": (
+                        float(entry.get("percentile"))
+                        if entry.get("percentile")
+                        else None
+                    ),
+                }
+            except (ValueError, TypeError):
+                continue
+    return result
 
 
 def _load_kev_catalog(client: httpx.Client) -> Dict[str, Dict[str, Any]]:
@@ -209,6 +288,32 @@ def _is_cache_fresh(intel: CVEIntelligence) -> bool:
     return datetime.utcnow() - intel.last_enriched_at < CACHE_TTL
 
 
+def _apply_static_fallback(intel: CVEIntelligence) -> bool:
+    """Populate CVSS/description from the static catalog if NVD was unavailable.
+
+    Only fills in fields that are currently empty, so real NVD data always wins
+    if it arrives on a later refresh. Returns True if anything was applied.
+    """
+    static = get_static_intel(intel.cve_id)
+    if not static:
+        return False
+
+    applied = False
+    for field in (
+        "cvss_v3_score",
+        "cvss_v3_severity",
+        "description",
+        "vendor",
+        "product",
+    ):
+        if getattr(intel, field, None) in (None, "") and static.get(field) is not None:
+            setattr(intel, field, static[field])
+            applied = True
+    if applied and not intel.nvd_url:
+        intel.nvd_url = f"https://nvd.nist.gov/vuln/detail/{intel.cve_id}"
+    return applied
+
+
 def enrich_cve(
     db: Session,
     cve_id: str,
@@ -217,7 +322,8 @@ def enrich_cve(
     """Fetch and cache threat intelligence for a single CVE.
 
     Returns the CVEIntelligence row. Uses cached data when fresh unless
-    ``force_refresh=True``.
+    ``force_refresh=True``. Falls back to the curated static catalog when
+    NVD is rate-limited or offline.
     """
     cve_id = cve_id.strip().upper()
 
@@ -236,6 +342,7 @@ def enrich_cve(
         db.flush()
 
     errors: List[str] = []
+    used_static = False
 
     with httpx.Client() as client:
         # NVD
@@ -254,7 +361,7 @@ def enrich_cve(
         else:
             errors.append("EPSS lookup returned no data")
 
-        # CISA KEV
+        # CISA KEV (always bulk-cached, effectively free)
         try:
             kev_data = _check_kev(client, cve_id)
             intel.is_kev = kev_data.get("is_kev", False)
@@ -266,14 +373,20 @@ def enrich_cve(
         except Exception as exc:  # noqa: BLE001
             errors.append(f"KEV check failed: {exc}")
 
+    # If NVD was throttled/offline, fill in the blanks from the static catalog
+    # so the UI has CVSS + description even on first load.
+    if nvd_data is None:
+        used_static = _apply_static_fallback(intel)
+
     intel.last_enriched_at = datetime.utcnow()
 
-    if nvd_data is None and epss_data is None:
+    if nvd_data is None and epss_data is None and not used_static and not intel.is_kev:
         intel.enrichment_status = "NOT_FOUND"
         intel.enrichment_error = "; ".join(errors) or "All sources returned no data"
     elif errors:
         intel.enrichment_status = "PARTIAL"
-        intel.enrichment_error = "; ".join(errors)
+        suffix = " (static fallback applied)" if used_static else ""
+        intel.enrichment_error = "; ".join(errors) + suffix
     else:
         intel.enrichment_status = "SUCCESS"
         intel.enrichment_error = None
@@ -288,18 +401,119 @@ def enrich_cves_bulk(
     cve_ids: List[str],
     force_refresh: bool = False,
 ) -> Dict[str, CVEIntelligence]:
-    """Enrich multiple CVEs. Returns a mapping of cve_id -> CVEIntelligence.
+    """Enrich multiple CVEs efficiently.
 
-    Designed to be called from background tasks after a scan snapshot is
-    generated so the UI can render threat-intel badges without blocking.
+    Strategy:
+    1. Bulk-fetch EPSS for all CVEs in one HTTP call.
+    2. Load CISA KEV catalog once (cached).
+    3. For CVEs needing NVD data, hit NVD one-at-a-time with rate-limiting;
+       fall back to the static catalog if throttled.
+
+    Much faster than serially calling ``enrich_cve`` per CVE, and survives
+    NVD rate-limiting gracefully.
     """
+    unique_cves = sorted({c.strip().upper() for c in cve_ids if c})
     results: Dict[str, CVEIntelligence] = {}
-    unique_cves = {c.strip().upper() for c in cve_ids if c}
+
+    if not unique_cves:
+        return results
+
+    # Pre-fetch existing rows
+    existing = {
+        row.cve_id: row
+        for row in db.query(CVEIntelligence)
+        .filter(CVEIntelligence.cve_id.in_(unique_cves))
+        .all()
+    }
+
+    # Determine which CVEs actually need enrichment
+    to_enrich: List[str] = []
     for cve_id in unique_cves:
+        intel = existing.get(cve_id)
+        if intel and not force_refresh and _is_cache_fresh(intel):
+            results[cve_id] = intel
+        else:
+            to_enrich.append(cve_id)
+
+    if not to_enrich:
+        return results
+
+    with httpx.Client() as client:
+        # One bulk EPSS call for all missing CVEs
+        epss_map = _fetch_epss_bulk(client, to_enrich)
+        # Load CISA KEV catalog once
         try:
-            results[cve_id] = enrich_cve(db, cve_id, force_refresh=force_refresh)
+            kev_catalog = _load_kev_catalog(client)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Enrichment failed for %s: %s", cve_id, exc)
+            logger.warning("KEV catalog load failed: %s", exc)
+            kev_catalog = {}
+
+        for cve_id in to_enrich:
+            intel = existing.get(cve_id)
+            if intel is None:
+                intel = CVEIntelligence(
+                    cve_id=cve_id, enrichment_status="PENDING"
+                )
+                db.add(intel)
+                db.flush()
+
+            errors: List[str] = []
+
+            nvd_data = _fetch_nvd(client, cve_id)
+            if nvd_data:
+                for field, value in nvd_data.items():
+                    setattr(intel, field, value)
+            else:
+                errors.append("NVD lookup returned no data")
+
+            epss = epss_map.get(cve_id)
+            if epss:
+                intel.epss_score = epss.get("epss_score")
+                intel.epss_percentile = epss.get("epss_percentile")
+            else:
+                errors.append("EPSS lookup returned no data")
+
+            kev = kev_catalog.get(cve_id)
+            if kev:
+                intel.is_kev = True
+                intel.kev_date_added = kev.get("kev_date_added")
+                intel.kev_due_date = kev.get("kev_due_date")
+                intel.kev_required_action = kev.get("kev_required_action")
+                intel.kev_ransomware_use = kev.get("kev_ransomware_use")
+            else:
+                intel.is_kev = False
+
+            used_static = False
+            if nvd_data is None:
+                used_static = _apply_static_fallback(intel)
+
+            intel.last_enriched_at = datetime.utcnow()
+            if (
+                nvd_data is None
+                and epss is None
+                and not used_static
+                and not intel.is_kev
+            ):
+                intel.enrichment_status = "NOT_FOUND"
+                intel.enrichment_error = (
+                    "; ".join(errors) or "All sources returned no data"
+                )
+            elif errors:
+                intel.enrichment_status = "PARTIAL"
+                suffix = " (static fallback applied)" if used_static else ""
+                intel.enrichment_error = "; ".join(errors) + suffix
+            else:
+                intel.enrichment_status = "SUCCESS"
+                intel.enrichment_error = None
+
+            results[cve_id] = intel
+
+    db.commit()
+    for intel in results.values():
+        try:
+            db.refresh(intel)
+        except Exception:  # noqa: BLE001
+            pass
     return results
 
 
