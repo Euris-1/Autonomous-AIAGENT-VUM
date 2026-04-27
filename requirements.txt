@@ -6,3 +6,4 @@ alembic
 python-multipart
 httpx
 pydantic
+python-dotenv

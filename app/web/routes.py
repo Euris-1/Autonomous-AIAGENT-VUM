@@ -35,6 +35,8 @@ from app.services.cve_enrichment import (
 from app.services.ollama_client import (
     OLLAMA_MODEL,
     OllamaError,
+    get_active_backend,
+    get_active_model,
     is_available as ollama_available,
     list_models as ollama_list_models,
     warmup as ollama_warmup,
@@ -1024,8 +1026,10 @@ def ai_status() -> Dict[str, object]:
 
     available = ollama_available()
     installed = ollama_list_models() if available else []
+    backend = get_active_backend()
+    active_model = get_active_model()
 
-    if available and OLLAMA_MODEL in installed:
+    if backend == "ollama" and OLLAMA_MODEL in installed:
         # Fire-and-forget warmup so the UI can proceed immediately
         threading.Thread(
             target=ollama_warmup, kwargs={"model": OLLAMA_MODEL}, daemon=True
@@ -1033,7 +1037,8 @@ def ai_status() -> Dict[str, object]:
 
     return {
         "available": available,
-        "configured_model": OLLAMA_MODEL,
+        "backend": backend,
+        "configured_model": active_model,
         "installed_models": installed,
     }
 
