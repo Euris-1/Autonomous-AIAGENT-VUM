@@ -4,15 +4,22 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136+-green.svg)
-![Ollama](https://img.shields.io/badge/LLM-Ollama%20llama3.1%3A8b-purple.svg)
+![LLM](https://img.shields.io/badge/LLM-Ollama%20%7C%20Groq-purple.svg)
 ![NVD](https://img.shields.io/badge/Data-NVD%20%7C%20EPSS%20%7C%20CISA%20KEV-red.svg)
+![Deploy](https://img.shields.io/badge/Deployed-Railway-black.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+**Live Demo:** https://autonomous-aiagent-vum-production.up.railway.app/
 
 ---
 
 ## What This Is
 
-The **Vulnerability Intelligence Hub** is a full-stack web application that autonomously scans enterprise security and IT-operations software for known CVEs, enriches them with real-world threat intelligence from official government and industry sources, and uses a **locally-running large language model** to generate actionable security briefings — with zero cloud dependencies, zero API costs, and zero data leaving your machine.
+The **Vulnerability Intelligence Hub** is a full-stack web application that autonomously scans enterprise security and IT-operations software for known CVEs, enriches them with real-world threat intelligence from official government and industry sources, and uses a **large language model** to generate actionable security briefings.
+
+The LLM backend is dual-mode:
+- **Local mode (Ollama)** — inference runs entirely on your machine. Nothing leaves localhost. No API costs. Full air-gap capability.
+- **Cloud fallback (Groq)** — when Ollama is not running, the app automatically switches to Groq's free API, which runs the same llama3.1 model family in the cloud. This makes the live demo accessible to anyone without any local setup.
 
 The moment you launch it, it goes to work. No manual setup. No clicking through wizards. No paid subscriptions.
 
@@ -22,13 +29,14 @@ The moment you launch it, it goes to work. No manual setup. No clicking through 
 
 Security teams managing tools like Nessus Manager, Trend Micro, Grafana Enterprise, Burp Suite, Tenable Security Center, and ServiceNow MID Server face a common challenge: knowing *which CVEs affect their stack right now, how dangerous they actually are, and what to do first.* Traditional answers involve expensive commercial scanners, paid threat feeds, and manual analyst time.
 
-This application replaces all of that with free official data, a local LLM, and a composite risk model that ranks vulnerabilities by real-world exploitability — not just theoretical severity.
+This application replaces all of that with free official data, a composite risk model, and an LLM that ranks vulnerabilities by real-world exploitability — not just theoretical severity.
 
 | Challenge | Solution |
 |-----------|----------|
 | **No visibility into CVE exposure** | Auto-scans NVD on launch for every registered service |
 | **Raw CVSS scores don't reflect real risk** | Composite scoring: CVSS + EPSS exploit probability + CISA KEV status |
-| **AI tools leak sensitive data to the cloud** | 100% local LLM inference via Ollama — nothing leaves your machine |
+| **AI tools leak sensitive data** | Local Ollama inference option — nothing leaves your machine |
+| **Sharing requires local LLM setup** | Groq cloud fallback — live demo works for anyone, zero install |
 | **Manual patch evidence collection** | Automated BEFORE/AFTER snapshot comparison |
 | **Inconsistent CR documentation** | Auto-generated Change Request summaries for STAGE and PROD |
 | **No audit trail** | Full lifecycle state machine with timestamped transitions |
@@ -63,16 +71,27 @@ Risk Score = (CVSS / 10 × 60) + (EPSS × 30) + (10 if on CISA KEV list)
 
 This means a CVSS 9.8 vulnerability with no active exploitation scores lower than a CVSS 7.5 that's already on the CISA active exploitation list. **Risk is measured by real-world threat, not theoretical severity.**
 
-### 4. Local LLM Intelligence (Ollama — 100% Private)
+### 4. Dual-Mode LLM Intelligence
 
-A locally-running **llama3.1:8b** model via Ollama reads the enriched CVE data and produces:
+The AI layer uses a priority-based backend selection:
 
-- **AI Fleet Briefing** — state of the entire fleet, top risks by CVE ID and service name, prioritized remediation steps with specific service references
-- **Per-Event Patch Briefings** — before/after patch comparisons, what was fixed, what still matters, posture verdict (LOW / MEDIUM / HIGH / CRITICAL)
-- **AI Action Plan Narratives** — professional Markdown explanations for each step in the patch lifecycle
-- **Interactive AI Chat** — ask follow-up questions about any specific patch event; the model is grounded to exact numbers and cannot hallucinate CVE data
+```
+Is Ollama running locally?
+  YES → use llama3.1:8b on your machine (private, free, air-gapped)
+  NO  → is GROQ_API_KEY set?
+          YES → use llama-3.1-8b-instant via Groq API (same model, cloud)
+          NO  → AI features disabled, rest of app still works
+```
 
-The LLM is architecturally grounded: every prompt contains exact CVSS scores, EPSS percentiles, and CVE IDs. The model is instructed to use only those numbers and name specific services — never generic references.
+Both backends produce identical outputs — the same prompts, the same structured responses, the same `OllamaResult` object returned to the app. The switch is invisible to the rest of the codebase.
+
+The LLM generates:
+- **AI Fleet Briefing** — state of the entire fleet, top risks by CVE ID and service name, prioritized remediation steps
+- **Per-Event Patch Briefings** — before/after comparisons, what was fixed, what still matters, posture verdict (LOW / MEDIUM / HIGH / CRITICAL)
+- **AI Action Plan Narratives** — professional Markdown explanations for each lifecycle step
+- **Interactive AI Chat** — ask follow-up questions grounded in exact CVE numbers
+
+The LLM is architecturally grounded: every prompt contains exact CVSS scores, EPSS percentiles, and CVE IDs. The model is instructed to use only those numbers — it cannot hallucinate CVE data.
 
 ### 5. Patch Lifecycle State Machine
 
@@ -89,43 +108,37 @@ Invalid transitions are blocked. You cannot promote to STAGE without DEV evidenc
 ## Dashboard Features
 
 ### Intelligence KPI Cards
-- **Unique CVEs** — total distinct CVEs across all services (with enrichment count)
-- **CISA KEV** — CVEs that are actively exploited in real-world attacks
-- **High EPSS** — CVEs with ≥ 70% probability of being exploited within 30 days
+- **Unique CVEs** — total distinct CVEs across all services
+- **CISA KEV** — CVEs actively exploited in real-world attacks
+- **High EPSS** — CVEs with ≥ 70% probability of exploitation within 30 days
 - **CVSS ≥ 9.0** — critical-severity CVEs by base score
-- **Patch Effectiveness** — percentage of known CVEs addressed across patched events
+- **Patch Effectiveness** — percentage of known CVEs addressed
 - **Patch Events** — total events tracked with evidence count
-
-Every card is clickable and opens a drill-down panel showing the underlying CVE list.
 
 ### Visualizations
 - **Severity Distribution** — switchable Donut / Bar / Radar / Polar chart
-- **Top Remaining CVEs by Real-World Risk** — ranked by composite score (CISA KEV × EPSS × CVSS)
+- **Top Remaining CVEs by Real-World Risk** — ranked by composite score
 - **Top Services by Risk** — service-level aggregate risk breakdown
-- **Patch Effectiveness Trend** — chronological effectiveness line chart across events
-- **CVSS and EPSS Histograms** — distribution of CVEs across score buckets
+- **Patch Effectiveness Trend** — chronological effectiveness line chart
+- **CVSS and EPSS Histograms** — distribution across score buckets
 
 ### AI Fleet Briefing
-Lazy-loaded on each dashboard visit. Checks Ollama availability, generates a structured briefing with:
-- State of the fleet (service-specific, not generic)
-- Top 3 highest-risk CVEs with IDs and scores
-- 3 prioritized remediation actions naming specific services
-- Overall posture verdict
-- 10-minute in-process cache; one-click regeneration
+Lazy-loaded on each dashboard visit. Checks LLM availability, generates a structured briefing with service-specific CVE analysis, prioritized remediation actions, and an overall posture verdict. 10-minute in-process cache with one-click regeneration.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Backend** | Python 3.12, FastAPI, SQLAlchemy ORM |
-| **Database** | SQLite (zero-config, portable) |
-| **Templating** | Jinja2 (Starlette 1.0 compatible) |
-| **Frontend** | Tailwind CSS, Chart.js 4, marked.js, tippy.js |
-| **Local LLM** | Ollama (llama3.1:8b, local inference — no internet required) |
-| **CVE Intelligence** | NVD API v2, FIRST.org EPSS API, CISA KEV JSON feed |
-| **Architecture** | Service layer + State Machine + async background scanning |
+| Layer | Technology | Why |
+|-------|------------|-----|
+| **Backend** | Python 3.12, FastAPI | Async, fast, automatic API docs |
+| **Database** | SQLite + SQLAlchemy ORM | Zero-config, portable, abstracted |
+| **Templating** | Jinja2 | Server-side HTML rendering |
+| **Frontend** | Tailwind CSS, Chart.js 4, marked.js | No build step, fast charts, markdown rendering |
+| **Local LLM** | Ollama (llama3.1:8b) | Private, no API cost, air-gap capable |
+| **Cloud LLM** | Groq API (llama-3.1-8b-instant) | Free fallback, same model, live demo accessible |
+| **CVE Intelligence** | NVD API v2, FIRST.org EPSS, CISA KEV | Official government/industry sources, all free |
+| **Deployment** | Railway | GitHub-connected, env var management, free tier |
 
 ---
 
@@ -140,11 +153,11 @@ Autonomous-AIAGENT-VUM/
 │   │                               #   CVEIntelligence, AIAnalysis
 │   ├── state.py                    # Patch lifecycle state machine
 │   ├── services/
-│   │   ├── nvd_cpe_scan.py         # NVD keyword search + auto patch event creation  ← NEW
+│   │   ├── nvd_cpe_scan.py         # NVD keyword search + auto patch event creation
 │   │   ├── cve_enrichment.py       # NVD / EPSS / CISA KEV enrichment + caching
 │   │   ├── fleet_intel.py          # Fleet-wide risk aggregation for dashboard
 │   │   ├── ai_agent.py             # LLM briefing, chat, and action narrative generation
-│   │   ├── ollama_client.py        # Local Ollama API wrapper
+│   │   ├── ollama_client.py        # Dual-mode LLM client: Ollama (local) + Groq (cloud)
 │   │   ├── action_planner.py       # Deterministic patch lifecycle recommender
 │   │   ├── synthetic_data.py       # Synthetic BEFORE/AFTER snapshot generation
 │   │   ├── diff.py                 # Fixed vulnerability diffing + severity counts
@@ -158,6 +171,7 @@ Autonomous-AIAGENT-VUM/
 │   ├── patch_event_detail.html     # Event detail + AI chat + lifecycle controls
 │   └── vulnerability_analysis.html # Full analysis view with charts and export
 ├── static/
+├── Procfile                        # Railway start command
 ├── requirements.txt
 └── README.md
 ```
@@ -166,66 +180,68 @@ Autonomous-AIAGENT-VUM/
 
 ## Getting Started
 
-### Prerequisites
+### Option A — Live Demo (no setup required)
 
-- **Python 3.12+**
-- **Ollama** — for local LLM inference
+Visit: **https://autonomous-aiagent-vum-production.up.railway.app/**
 
-#### Install Ollama
-
-Download from [ollama.com](https://ollama.com) and pull the model:
-
-```bash
-ollama pull llama3.1:8b
-```
-
-Verify it runs:
-
-```bash
-ollama serve
-```
-
-Ollama must be running at `http://localhost:11434` before starting the application. The dashboard shows a live Ollama status indicator.
+The live demo uses Groq's free API for AI inference. No installation needed.
 
 ---
 
-### 1. Clone the Repository
+### Option B — Run Locally with Ollama (fully private)
+
+#### Prerequisites
+- Python 3.12+
+- Ollama — download from [ollama.com](https://ollama.com)
 
 ```bash
-git clone <REPO_URL>
-cd Autonomous-AIAGENT-VUM
+ollama pull llama3.1:8b
+ollama serve
 ```
 
-### 2. Create and Activate a Virtual Environment
+#### 1. Clone and Set Up
+
+```bash
+git clone https://github.com/Euris-1/Autonomous-AIAGENT-VUM.git
+cd Autonomous-AIAGENT-VUM
+python -m venv env
+```
 
 **Windows:**
 ```bash
-python -m venv env
 env\Scripts\activate
 ```
 
 **macOS / Linux:**
 ```bash
-python -m venv env
 source env/bin/activate
 ```
 
-### 3. Install Dependencies
-
 ```bash
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 4. Run the Application
+#### 2. Run
 
 ```bash
 python -m uvicorn app.main:app --reload --port 8080
 ```
 
-> **Note for Windows users:** Port 8000 is frequently reserved by Hyper-V or WSL. Use `--port 8080` or any available port above 8000.
+Open **http://127.0.0.1:8080/**
 
-Open your browser at **http://127.0.0.1:8080/**
+---
+
+### Option C — Run Locally with Groq (no Ollama needed)
+
+Get a free API key at [console.groq.com](https://console.groq.com), then:
+
+```bash
+# Create a .env file in the project root
+echo GROQ_API_KEY=your_key_here > .env
+python -m uvicorn app.main:app --reload --port 8080
+```
+
+The app detects Ollama is absent and automatically uses Groq.
 
 ---
 
@@ -235,22 +251,34 @@ On first launch the application:
 
 1. Creates the SQLite database (`patch_tracker.db`) automatically
 2. Seeds all default services: Nessus Manager, Trend Micro, Tenable Security Center, ServiceNow MID Server, Grafana Enterprise, Burp Suite
-3. **Immediately starts a background NVD scan** — querying the National Vulnerability Database for real CVEs affecting each service
+3. **Starts a background NVD scan** — querying the National Vulnerability Database for real CVEs affecting each service
 4. Populates the dashboard with real CVE data, EPSS scores, and CISA KEV flags within ~60 seconds
-5. The AI Fleet Briefing auto-loads once Ollama is available and CVE data is present
+5. The AI Fleet Briefing auto-loads once any LLM backend is available
 
 **No manual steps required.** Refresh the dashboard after ~60 seconds to see the full intelligence picture.
 
 ---
 
-## Environment Variables (Optional)
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NVD_API_KEY` | *(none)* | Free NVD API key — raises rate limit from 5 req/30s to 50 req/30s. Get one at [nvd.nist.gov/developers](https://nvd.nist.gov/developers/request-an-api-key) |
+| `GROQ_API_KEY` | *(none)* | Groq cloud API key — enables AI when Ollama is absent. Free at [console.groq.com](https://console.groq.com) |
+| `GROQ_MODEL` | `llama-3.1-8b-instant` | Groq model to use |
+| `NVD_API_KEY` | *(none)* | Raises NVD rate limit from 5 to 50 req/30s. Free at [nvd.nist.gov/developers](https://nvd.nist.gov/developers/request-an-api-key) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama daemon URL |
-| `OLLAMA_MODEL` | `llama3.1:8b` | Model to use for inference |
-| `OLLAMA_TIMEOUT_S` | `600` | Inference timeout in seconds |
+| `OLLAMA_MODEL` | `llama3.1:8b` | Local Ollama model |
+| `OLLAMA_TIMEOUT_S` | `600` | Local inference timeout in seconds |
+
+---
+
+## Deploying to Railway
+
+1. Push the repo to GitHub
+2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+3. Select your repo — Railway detects the `Procfile` and sets the start command automatically
+4. Go to **Variables** tab → add `GROQ_API_KEY` with your Groq key
+5. Railway provides a public URL — share it anywhere
 
 ---
 
@@ -268,22 +296,18 @@ On first launch the application:
 9. PROMOTE    →  Advance through DEV → STAGE → PROD → CLOSED lifecycle
 ```
 
-### Manual Scan
-
-At any time, click **"Scan All Services"** on the dashboard to run a fresh NVD scan. New patch events are created alongside existing ones, building a historical record of your CVE exposure over time.
-
 ---
 
 ## Data Privacy
 
-| Data Type | Stays Local? |
-|-----------|-------------|
-| CVE IDs submitted to NVD | Yes — only public CVE IDs are sent |
-| LLM prompts and responses | Yes — Ollama runs entirely on your machine |
-| Vulnerability data | Yes — stored in local SQLite only |
-| EPSS / KEV lookups | Public CVE IDs only; no company context sent |
+| Data Type | Local Mode | Cloud Demo |
+|-----------|-----------|------------|
+| LLM prompts (CVE data + scores) | Never leaves machine | Sent to Groq API |
+| Vulnerability database | Local SQLite only | Local SQLite only |
+| CVE IDs sent to NVD/EPSS/KEV | Public IDs only | Public IDs only |
+| Company names or hostnames | Never stored | Never stored |
 
-No company names, hostnames, internal identifiers, or sensitive context ever leave your machine.
+For sensitive environments, run in local Ollama mode — full air-gap capability after first CVE cache is populated.
 
 ---
 
@@ -299,19 +323,6 @@ No company names, hostnames, internal identifiers, or sensitive context ever lea
 
 ---
 
-## Business Value
-
-| Benefit | Impact |
-|---------|--------|
-| **Real threat intelligence** | CVSS + EPSS + CISA KEV from official sources — same data government agencies use |
-| **AI-powered prioritization** | Composite risk scoring surfaces what to fix first, not just what scores highest |
-| **Zero cost** | Every data source is free; local LLM inference has no per-call cost |
-| **Zero data exposure** | Full air-gap capability; sensitive environments can run with no internet after first CVE cache |
-| **Audit trail** | Complete timestamped lifecycle with Change Request documentation |
-| **Speed** | Full fleet CVE briefing in under 60 seconds from cold start |
-
----
-
 ## License
 
 MIT License — See LICENSE file for details.
@@ -320,4 +331,4 @@ MIT License — See LICENSE file for details.
 
 ## Author
 
-Built by Chayim Euris Garcia — combining real public threat intelligence, local LLM inference, and production-grade software architecture into a single autonomous security intelligence platform.
+Built by Chayim Euris Garcia — combining real public threat intelligence, dual-mode LLM inference, and production-grade software architecture into a single autonomous security intelligence platform.
