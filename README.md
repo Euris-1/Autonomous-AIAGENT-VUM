@@ -43,6 +43,8 @@ The previous Railway-hosted deployment is no longer active, so users should run 
 
 Because the AI layer uses Ollama for local inference, Ollama must be installed and running before starting the application.
 
+There is currently no live hosted demo; the project is intended to be reviewed and run locally.
+
 
 ## How It Works — End to End
 
