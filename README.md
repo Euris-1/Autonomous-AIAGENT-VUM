@@ -12,7 +12,7 @@
 
 ## What This Is
 
-The **Vulnerability Intelligence Hub** is a full-stack web application that autonomously scans enterprise security and IT-operations software for known CVEs, enriches them with real-world threat intelligence from official government and industry sources, and uses a **locally-running large language model** to generate actionable security briefings — with zero cloud dependencies, zero API costs, and zero data leaving your machine.
+The Vulnerability Intelligence Hub is a full-stack web application that autonomously scans enterprise security and IT-operations software for known CVEs, enriches them with real-world threat intelligence from official government and industry sources, and uses a locally-running large language model to generate actionable security briefings — with zero paid AI/API costs and no private vulnerability context sent to a hosted LLM.
 
 The moment you launch it, it goes to work. No manual setup. No clicking through wizards. No paid subscriptions.
 
@@ -34,6 +34,15 @@ This application replaces all of that with free official data, a local LLM, and 
 | **No audit trail** | Full lifecycle state machine with timestamped transitions |
 
 ---
+
+## Deployment Status
+
+This project is currently intended to run locally.
+
+The previous Railway-hosted deployment is no longer active, so users should run the application on their own machine using the local setup instructions below.
+
+Because the AI layer uses Ollama for local inference, Ollama must be installed and running before starting the application.
+
 
 ## How It Works — End to End
 
@@ -123,7 +132,7 @@ Lazy-loaded on each dashboard visit. Checks Ollama availability, generates a str
 | **Database** | SQLite (zero-config, portable) |
 | **Templating** | Jinja2 (Starlette 1.0 compatible) |
 | **Frontend** | Tailwind CSS, Chart.js 4, marked.js, tippy.js |
-| **Local LLM** | Ollama (llama3.1:8b, local inference — no internet required) |
+| **Local LLM** | Ollama (llama3.1:8b, local inference — no internet required for AI generation after the model is installed) |
 | **CVE Intelligence** | NVD API v2, FIRST.org EPSS API, CISA KEV JSON feed |
 | **Architecture** | Service layer + State Machine + async background scanning |
 
@@ -192,7 +201,7 @@ Ollama must be running at `http://localhost:11434` before starting the applicati
 ### 1. Clone the Repository
 
 ```bash
-git clone <REPO_URL>
+git clone <https://github.com/Euris-1/Autonomous-AIAGENT-VUM.git>
 cd Autonomous-AIAGENT-VUM
 ```
 
@@ -278,7 +287,7 @@ At any time, click **"Scan All Services"** on the dashboard to run a fresh NVD s
 
 | Data Type | Stays Local? |
 |-----------|-------------|
-| CVE IDs submitted to NVD | Yes — only public CVE IDs are sent |
+| Public CVE/service keyword lookups | Sent only to official public threat intelligence sources such as NVD, EPSS, and CISA KEV |
 | LLM prompts and responses | Yes — Ollama runs entirely on your machine |
 | Vulnerability data | Yes — stored in local SQLite only |
 | EPSS / KEV lookups | Public CVE IDs only; no company context sent |
